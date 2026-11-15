@@ -153,7 +153,22 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   FirebaseAuth get auth => FirebaseAuth.instanceFor(app: Firebase.app());
 
   /// Veritabanı kuralları da aynı adresi hesaplayabilsin diye: küçük harfli uid.
-  static String authEmail(String uid) => '${uid.toLowerCase()}@users.qyriptalk.app';
+  /// [ver]: yönetici şifreyi sıfırladıysa hesabın yeni sürümü (ör. "r1"); yoksa boş.
+  static String authEmail(String uid, [String ver = '']) =>
+      '${uid.toLowerCase()}${ver.isEmpty ? '' : '.$ver'}@users.qyriptalk.app';
+
+  /// Herkese açık "authV/{uid}": yönetici panelden şifre değiştirdiyse giriş adresi sürümü.
+  Future<String> _authVer(String uid) async {
+    try {
+      return asStr((await db.ref('authV/$uid').get().timeout(const Duration(seconds: 10))).value);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /// authMap kaydı: kuralların beklediği biçimde (sürümle birlikte) uid yazılır.
+  Future<void> _writeAuthMap(String authUid, String uid, {FirebaseDatabase? using}) =>
+      (using ?? db).ref('authMap/$authUid').set(uid);
 
   /// Firebase en az 6 karakter ister; eski kısa şifreler için sabit bir dönüşüm.
   static String authPassword(String pw) => pw.length >= 6 ? pw : 'qt#$pw#qyrip';
@@ -203,7 +218,8 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       final uids = await _uidsForUsername(username);
       if (uids.isEmpty) return 'Bu kullanıcı adıyla bir hesap bulunamadı.';
       for (final uid in uids) {
-        final email = authEmail(uid);
+        final ver = await _authVer(uid);
+        final email = authEmail(uid, ver);
         try {
           final cred = await auth.signInWithEmailAndPassword(email: email, password: authPassword(password));
           final s = await db.ref('users/$uid/username').get();
@@ -221,6 +237,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
             return 'Sunucuya ulaşılamadı. İnternet bağlantını kontrol et.';
           }
           // Hesap henüz taşınmamış olabilir: eski şifreyle doğrula ve taşı.
+          if (ver.isNotEmpty) continue;
           final migrated = await _migrateWithPassword(uid, password);
           if (migrated != null) {
             await _setSession(uid, migrated);
@@ -1134,7 +1151,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     if (u != null) {
       try {
         await u.reauthenticateWithCredential(
-            EmailAuthProvider.credential(email: authEmail(uid), password: authPassword(current)));
+            EmailAuthProvider.credential(email: u.email ?? authEmail(uid), password: authPassword(current)));
         await u.updatePassword(authPassword(next));
         return null;
       } on FirebaseAuthException catch (e) {

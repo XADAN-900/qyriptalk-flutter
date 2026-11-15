@@ -5,8 +5,12 @@
     "authMap": {
       "$a": {
         ".read": "auth != null && auth.uid === $a",
-        ".write": "auth != null && auth.uid === $a && newData.isString() && auth.token.email === newData.val().toLowerCase() + '@users.qyriptalk.app'"
+        ".write": "auth != null && ((auth.uid === $a && newData.isString() && auth.token.email === newData.val().toLowerCase() + (root.child('authV').child(newData.val() + '').exists() ? '.' + root.child('authV').child(newData.val() + '').val() : '') + '@users.qyriptalk.app') || ((auth != null && (root.child('admins').child(auth.uid).exists() || root.child('users').child(root.child('authMap').child(auth.uid).val() + '').child('role').val() === 'admin')) && !newData.exists()))"
       }
+    },
+    "authV": {
+      ".read": true,
+      ".write": "(auth != null && (root.child('admins').child(auth.uid).exists() || root.child('users').child(root.child('authMap').child(auth.uid).val() + '').child('role').val() === 'admin'))"
     },
     "usernames": {
       ".read": true,
