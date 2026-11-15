@@ -91,50 +91,78 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// Tüm kullanıcıları (uid -> veri) getirir. Realtime Database'de "username" için
+  /// indeks tanımlı olmadığından sorgu yerine istemci tarafında filtreleriz
+  /// (web sürümü de aynısını yapıyor).
+  Future<Map<String, Map<String, dynamic>>> _fetchUsers() async {
+    final snap = await db.ref('users').get().timeout(const Duration(seconds: 20));
+    final out = <String, Map<String, dynamic>>{};
+    asMap(snap.value).forEach((k, v) {
+      final m = asMap(v);
+      if (m.isNotEmpty) out[k] = m;
+    });
+    return out;
+  }
+
+  static String _norm(String s) => s.trim().toLowerCase();
+
+  /// Kullanıcı adı alınmış mı? (büyük/küçük harf duyarsız)
+  Future<bool> isUsernameTaken(String name) async {
+    final n = _norm(name);
+    if (n.isEmpty) return false;
+    final all = await _fetchUsers();
+    return all.entries.any((e) => _norm(asStr(e.value['username'])) == n && e.key != _uid);
+  }
+
+  static String? validateUsername(String username) {
+    final u = username.trim();
+    if (u.length < 3) return 'Kullanıcı adı en az 3 karakter olmalı.';
+    if (u.length > 24) return 'Kullanıcı adı en fazla 24 karakter olabilir.';
+    if (!RegExp(r'^[\wçğıöşüÇĞİÖŞÜ.\- ]+$').hasMatch(u)) {
+      return 'Sadece harf, rakam, boşluk, nokta, - ve _ kullanılabilir.';
+    }
+    return null;
+  }
+
   Future<String?> login(String username, String password) async {
     username = username.trim();
     if (username.isEmpty || password.isEmpty) {
       return 'Kullanıcı adı ve şifre gerekli.';
     }
     try {
-      final snap = await db
-          .ref('users')
-          .orderByChild('username')
-          .equalTo(username)
-          .get()
-          .timeout(const Duration(seconds: 15));
-      if (!snap.exists) return 'Kullanıcı bulunamadı.';
-      for (final c in snap.children) {
-        final m = asMap(c.value);
-        if (asStr(m['password']) == password) {
-          await _setSession(c.key!, asStr(m['username'], username));
+      final all = await _fetchUsers();
+      // Önce birebir eşleşme, yoksa büyük/küçük harf duyarsız eşleşme.
+      var matches = all.entries.where((e) => asStr(e.value['username']) == username).toList();
+      if (matches.isEmpty) {
+        matches = all.entries.where((e) => _norm(asStr(e.value['username'])) == _norm(username)).toList();
+      }
+      if (matches.isEmpty) return 'Bu kullanıcı adıyla bir hesap bulunamadı.';
+      for (final e in matches) {
+        if (asStr(e.value['password']) == password) {
+          await _setSession(e.key, asStr(e.value['username'], username));
           return null;
         }
       }
-      return 'Hatalı şifre.';
+      return 'Şifre hatalı.';
     } on TimeoutException {
       return 'Sunucuya ulaşılamadı. İnternet bağlantını kontrol et.';
     } catch (e) {
-      return 'Giriş yapılamadı: $e';
+      return 'Giriş yapılamadı. Lütfen tekrar dene.\n($e)';
     }
   }
 
-  Future<String?> register(String username, String password) async {
+  Future<String?> register(
+    String username,
+    String password, {
+    String? photoDataUrl,
+    String bio = '',
+  }) async {
     username = username.trim();
-    if (username.length < 3) return 'Kullanıcı adı en az 3 karakter olmalı.';
-    if (username.length > 24) return 'Kullanıcı adı en fazla 24 karakter olabilir.';
-    if (!RegExp(r'^[\wçğıöşüÇĞİÖŞÜ.\- ]+$').hasMatch(username)) {
-      return 'Kullanıcı adında geçersiz karakter var.';
-    }
+    final v = validateUsername(username);
+    if (v != null) return v;
     if (password.length < 6) return 'Şifre en az 6 karakter olmalı.';
     try {
-      final snap = await db
-          .ref('users')
-          .orderByChild('username')
-          .equalTo(username)
-          .get()
-          .timeout(const Duration(seconds: 15));
-      if (snap.exists) return 'Bu kullanıcı adı zaten alınmış.';
+      if (await isUsernameTaken(username)) return 'Bu kullanıcı adı zaten alınmış.';
       final ref = db.ref('users').push();
       await ref.set({
         'username': username,
@@ -143,13 +171,21 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         'createdAt': ServerValue.timestamp,
         'lastSeen': DateTime.now().millisecondsSinceEpoch,
         'role': 'user',
+        if (photoDataUrl != null) 'profilePhoto': photoDataUrl,
+        if (bio.trim().isNotEmpty) 'bio': bio.trim(),
+        'settings': {
+          'messageNotifications': true,
+          'soundNotifications': true,
+          'showReadReceipts': true,
+          'lockscreenPreview': true,
+        },
       });
       await _setSession(ref.key!, username);
       return null;
     } on TimeoutException {
       return 'Sunucuya ulaşılamadı. İnternet bağlantını kontrol et.';
     } catch (e) {
-      return 'Kayıt başarısız: $e';
+      return 'Kayıt başarısız. Lütfen tekrar dene.\n($e)';
     }
   }
 
@@ -649,9 +685,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     final uid = _uid;
     if (uid == null) return 'Oturum yok.';
     next = next.trim();
-    if (next.length < 3) return 'Kullanıcı adı en az 3 karakter olmalı.';
-    final snap = await db.ref('users').orderByChild('username').equalTo(next).get();
-    if (snap.exists) return 'Bu kullanıcı adı alınmış.';
+    final v = validateUsername(next);
+    if (v != null) return v;
+    if (await isUsernameTaken(next)) return 'Bu kullanıcı adı alınmış.';
     await db.ref('users/$uid/username').set(next);
     _username = next;
     await prefs.setString('username', next);
