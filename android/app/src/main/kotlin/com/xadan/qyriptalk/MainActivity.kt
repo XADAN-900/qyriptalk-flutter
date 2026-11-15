@@ -107,7 +107,7 @@ class MainActivity : FlutterActivity() {
                     result.success("permission")
                     return@setMethodCallHandler
                 }
-                val uri = UpdateFileProvider.getUriForFile(this, "$packageName.updates", java.io.File(path))
+                val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.updates", java.io.File(path))
                 val i = android.content.Intent(android.content.Intent.ACTION_VIEW)
                     .setDataAndType(uri, "application/vnd.android.package-archive")
                     .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
