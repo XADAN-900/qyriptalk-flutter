@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
@@ -96,8 +97,11 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       notifyListeners();
       // Hesap silinmiş mi diye arka planda kontrol et.
       unawaited(db.ref('users/$savedUid/username').get().then((s) {
-        if (!s.exists && _uid == savedUid) logout();
+        if (!s.exists && _uid == savedUid && connected) logout();
       }).catchError((_) {}));
+      // Eski sürümden kalan oturum: şifre sormadan güvenli girişe taşı.
+      if (connected) await _ensureSecureSession(savedUid).timeout(const Duration(seconds: 20), onTimeout: () {});
+      if (_uid == null) return;
       await _startSession();
     } else {
       _restoring = false;
@@ -124,8 +128,8 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Future<bool> isUsernameTaken(String name) async {
     final n = _norm(name);
     if (n.isEmpty) return false;
-    final all = await _fetchUsers();
-    return all.entries.any((e) => _norm(asStr(e.value['username'])) == n && e.key != _uid);
+    final uids = await _uidsForUsername(name);
+    return uids.any((u) => u != _uid);
   }
 
   static String? validateUsername(String username) {
@@ -138,23 +142,90 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     return null;
   }
 
+  // ----------------------------------------------------------------------
+  // GÜVENLİ GİRİŞ (Firebase Authentication)
+  // Şifreler artık veritabanında DURMAZ; Firebase Auth'ta güvenle (hash'li) saklanır.
+  // Her hesap için gizli bir e-posta: <uid>@users.qyriptalk.app
+  // authMap/{authUid} = uid  -> veritabanı kuralları kimin hangi hesap olduğunu bilir.
+  // usernames/{ad}/{uid} = true -> giriş için kullanıcı adı -> hesap eşlemesi.
+  // Eski hesaplar ilk girişte otomatik taşınır (açık şifre silinir).
+  // ----------------------------------------------------------------------
+  FirebaseAuth get auth => FirebaseAuth.instanceFor(app: Firebase.app());
+
+  /// Veritabanı kuralları da aynı adresi hesaplayabilsin diye: küçük harfli uid.
+  static String authEmail(String uid) => '${uid.toLowerCase()}@users.qyriptalk.app';
+
+  /// Firebase en az 6 karakter ister; eski kısa şifreler için sabit bir dönüşüm.
+  static String authPassword(String pw) => pw.length >= 6 ? pw : 'qt#$pw#qyrip';
+
+  static String nameKey(String username) =>
+      _norm(username).replaceAll('.', ',').replaceAll(RegExp(r'[#$\[\]/]'), '_');
+
+  static bool _authUnavailable(FirebaseAuthException e) =>
+      e.code == 'operation-not-allowed' ||
+      e.code == 'configuration-not-found' ||
+      (e.message ?? '').contains('CONFIGURATION_NOT_FOUND');
+
+  /// Kullanıcı adına ait hesap kimlikleri (önce herkese açık indeks, yoksa eski yöntem).
+  Future<List<String>> _uidsForUsername(String username) async {
+    try {
+      final s = await db.ref('usernames/${nameKey(username)}').get().timeout(const Duration(seconds: 15));
+      final ids = asMap(s.value).keys.toList();
+      if (ids.isNotEmpty) return ids;
+    } catch (_) {}
+    try {
+      final all = await _fetchUsers();
+      var matches = all.entries.where((e) => asStr(e.value['username']) == username).toList();
+      if (matches.isEmpty) {
+        matches = all.entries.where((e) => _norm(asStr(e.value['username'])) == _norm(username)).toList();
+      }
+      return matches.map((e) => e.key).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Hesabı güvenli girişe bağlar: eşleme + indeks yazar, açık metin şifreyi siler.
+  Future<void> _linkAccount(String uid, String authUid, String username, {FirebaseDatabase? using}) async {
+    final d = using ?? db;
+    await d.ref('authMap/$authUid').set(uid);
+    await d.ref('users/$uid/authUid').set(authUid);
+    await d.ref('usernames/${nameKey(username)}/$uid').set(true);
+    await d.ref('users/$uid/password').remove();
+  }
+
   Future<String?> login(String username, String password) async {
     username = username.trim();
     if (username.isEmpty || password.isEmpty) {
       return 'Kullanıcı adı ve şifre gerekli.';
     }
     try {
-      final all = await _fetchUsers();
-      // Önce birebir eşleşme, yoksa büyük/küçük harf duyarsız eşleşme.
-      var matches = all.entries.where((e) => asStr(e.value['username']) == username).toList();
-      if (matches.isEmpty) {
-        matches = all.entries.where((e) => _norm(asStr(e.value['username'])) == _norm(username)).toList();
-      }
-      if (matches.isEmpty) return 'Bu kullanıcı adıyla bir hesap bulunamadı.';
-      for (final e in matches) {
-        if (asStr(e.value['password']) == password) {
-          await _setSession(e.key, asStr(e.value['username'], username));
+      final uids = await _uidsForUsername(username);
+      if (uids.isEmpty) return 'Bu kullanıcı adıyla bir hesap bulunamadı.';
+      for (final uid in uids) {
+        final email = authEmail(uid);
+        try {
+          final cred = await auth.signInWithEmailAndPassword(email: email, password: authPassword(password));
+          final s = await db.ref('users/$uid/username').get();
+          final name = asStr(s.value, username);
+          // Eski sürümden kalan açık şifre ve eksik indeksleri temizle.
+          await _linkAccount(uid, cred.user!.uid, name);
+          await _setSession(uid, name);
           return null;
+        } on FirebaseAuthException catch (e) {
+          if (_authUnavailable(e)) return _legacyLogin(uid, username, password);
+          if (e.code == 'too-many-requests') {
+            return 'Çok fazla deneme yapıldı. Biraz bekleyip tekrar dene.';
+          }
+          if (e.code == 'network-request-failed') {
+            return 'Sunucuya ulaşılamadı. İnternet bağlantını kontrol et.';
+          }
+          // Hesap henüz taşınmamış olabilir: eski şifreyle doğrula ve taşı.
+          final migrated = await _migrateWithPassword(uid, password);
+          if (migrated != null) {
+            await _setSession(uid, migrated);
+            return null;
+          }
         }
       }
       return 'Şifre hatalı.';
@@ -163,6 +234,61 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) {
       return 'Giriş yapılamadı. Lütfen tekrar dene.\n($e)';
     }
+  }
+
+  /// Eski (taşınmamış) hesap: veritabanındaki şifre doğruysa Firebase Auth hesabı açar.
+  /// Başarılıysa kullanıcı adını döndürür.
+  Future<String?> _migrateWithPassword(String uid, String password) async {
+    try {
+      final s = await db.ref('users/$uid').get();
+      final m = asMap(s.value);
+      final stored = asStr(m['password']);
+      if (stored.isEmpty || stored != password) return null;
+      final name = asStr(m['username'], 'Kullanıcı');
+      final cred = await auth.createUserWithEmailAndPassword(
+          email: authEmail(uid), password: authPassword(password));
+      await _linkAccount(uid, cred.user!.uid, name);
+      return name;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Firebase'de e-posta/şifre girişi henüz açılmamışsa eski yöntemle giriş (geçici).
+  Future<String?> _legacyLogin(String uid, String username, String password) async {
+    try {
+      final s = await db.ref('users/$uid').get();
+      final m = asMap(s.value);
+      if (asStr(m['password']) == password) {
+        await _setSession(uid, asStr(m['username'], username));
+        return null;
+      }
+    } catch (_) {}
+    return 'Şifre hatalı.';
+  }
+
+  /// Oturumu açık eski kullanıcıyı (şifresini sormadan) güvenli girişe taşır.
+  Future<void> _ensureSecureSession(String uid) async {
+    if (auth.currentUser != null) return;
+    try {
+      final s = await db.ref('users/$uid').get();
+      final m = asMap(s.value);
+      final pw = asStr(m['password']);
+      final name = asStr(m['username'], username);
+      if (pw.isEmpty) {
+        // Hesap taşınmış ama bu cihazda Firebase oturumu yok: tekrar giriş gerekli.
+        if (asStr(m['authUid']).isNotEmpty) await logout();
+        return;
+      }
+      UserCredential cred;
+      try {
+        cred = await auth.signInWithEmailAndPassword(email: authEmail(uid), password: authPassword(pw));
+      } on FirebaseAuthException catch (e) {
+        if (_authUnavailable(e)) return;
+        cred = await auth.createUserWithEmailAndPassword(email: authEmail(uid), password: authPassword(pw));
+      }
+      await _linkAccount(uid, cred.user!.uid, name);
+    } catch (_) {}
   }
 
   Future<String?> register(
@@ -178,9 +304,25 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     try {
       if (await isUsernameTaken(username)) return 'Bu kullanıcı adı zaten alınmış.';
       final ref = db.ref('users').push();
+      final uid = ref.key!;
+      String? authUid;
+      try {
+        final cred = await auth.createUserWithEmailAndPassword(
+            email: authEmail(uid), password: authPassword(password));
+        authUid = cred.user!.uid;
+        await db.ref('authMap/$authUid').set(uid);
+      } on FirebaseAuthException catch (e) {
+        if (!_authUnavailable(e)) {
+          return e.code == 'network-request-failed'
+              ? 'Sunucuya ulaşılamadı. İnternet bağlantını kontrol et.'
+              : 'Kayıt başarısız (${e.code}).';
+        }
+      }
       await ref.set({
         'username': username,
-        'password': password,
+        // Güvenli giriş açık değilse (geçici) eski yöntem; açıksa şifre ASLA veritabanına yazılmaz.
+        if (authUid == null) 'password': password,
+        if (authUid != null) 'authUid': authUid,
         'isOnline': true,
         'createdAt': ServerValue.timestamp,
         'lastSeen': DateTime.now().millisecondsSinceEpoch,
@@ -194,13 +336,74 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
           'lockscreenPreview': true,
         },
       });
-      await _setSession(ref.key!, username);
+      await db.ref('usernames/${nameKey(username)}/$uid').set(true).catchError((_) {});
+      await _setSession(uid, username);
       return null;
     } on TimeoutException {
       return 'Sunucuya ulaşılamadı. İnternet bağlantını kontrol et.';
     } catch (e) {
       return 'Kayıt başarısız. Lütfen tekrar dene.\n($e)';
     }
+  }
+
+  /// Yönetici: henüz taşınmamış TÜM hesapları güvenli girişe taşır ve açık şifreleri siler.
+  /// Ayrı bir Firebase örneğiyle çalışır (senin oturumun kapanmaz).
+  Future<String> migrateAllAccounts(void Function(int done, int total) onProgress) async {
+    final all = await _fetchUsers();
+    final todo = all.entries
+        .where((e) => asStr(e.value['password']).isNotEmpty || asStr(e.value['authUid']).isNotEmpty)
+        .toList();
+    FirebaseApp app2;
+    try {
+      app2 = Firebase.app('migrator');
+    } catch (_) {
+      app2 = await Firebase.initializeApp(name: 'migrator', options: FirebaseConfig.options);
+    }
+    final auth2 = FirebaseAuth.instanceFor(app: app2);
+    final db2 = FirebaseDatabase.instanceFor(app: app2, databaseURL: FirebaseConfig.databaseUrl);
+    var ok = 0, skipped = 0, done = 0;
+    for (final e in todo) {
+      final uid = e.key;
+      final m = e.value;
+      final pw = asStr(m['password']);
+      final name = asStr(m['username'], 'Kullanıcı');
+      try {
+        if (pw.isEmpty) {
+          // Zaten taşınmış: sadece indeks eksikse tamamla.
+          await db.ref('usernames/${nameKey(name)}/$uid').set(true).catchError((_) {});
+          ok++;
+        } else {
+          UserCredential cred;
+          try {
+            cred = await auth2.createUserWithEmailAndPassword(email: authEmail(uid), password: authPassword(pw));
+          } on FirebaseAuthException catch (x) {
+            if (x.code == 'email-already-in-use') {
+              cred = await auth2.signInWithEmailAndPassword(email: authEmail(uid), password: authPassword(pw));
+            } else {
+              rethrow;
+            }
+          }
+          await _linkAccount(uid, cred.user!.uid, name, using: db2);
+          await auth2.signOut();
+          ok++;
+        }
+      } on FirebaseAuthException catch (x) {
+        if (_authUnavailable(x)) {
+          return 'Firebase Console\'da Authentication → Sign-in method → Email/Password açık değil.';
+        }
+        if (x.code == 'too-many-requests') {
+          return '$ok hesap taşındı. Firebase sınırına takıldı; bir saat sonra tekrar bas, kaldığı yerden devam eder.';
+        }
+        skipped++;
+      } catch (_) {
+        skipped++;
+      }
+      done++;
+      onProgress(done, todo.length);
+    }
+    return skipped == 0
+        ? 'Tamamlandı: $ok hesap güvenli girişe taşındı, açık şifreler silindi ✅'
+        : '$ok hesap taşındı, $skipped hesap taşınamadı (tekrar deneyebilirsin).';
   }
 
   Future<void> _setSession(String uid, String name) async {
@@ -224,6 +427,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       } catch (_) {}
     }
     await _stopSession();
+    try {
+      await auth.signOut();
+    } catch (_) {}
     _uid = null;
     _username = null;
     await prefs.remove('uid');
@@ -616,7 +822,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Future<Room?> refreshRoom(String id) async {
     try {
       final base = db.ref('rooms/$id');
-      final keys = ['name', 'logo', 'isPrivate', 'password', 'createdBy', 'createdAt', 'description'];
+      final keys = ['name', 'logo', 'isPrivate', 'password', 'passwordHash', 'createdBy', 'createdAt', 'description'];
       final snaps = await Future.wait(keys.map((k) => base.child(k).get()));
       final m = <String, dynamic>{};
       for (var i = 0; i < keys.length; i++) {
@@ -632,6 +838,14 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         }
         notifyListeners();
         return null;
+      }
+      // Eski odalarda açık metin şifre: oda sahibi açınca özet (hash) haline çevrilir.
+      final plain = asStr(m['password']);
+      if (plain.isNotEmpty && asStr(m['createdBy']) == _uid) {
+        final h = roomPasswordHash(id, plain);
+        await base.update({'passwordHash': h, 'password': null}).catchError((_) {});
+        m['passwordHash'] = h;
+        m.remove('password');
       }
       final r = Room.fromMap(id, m);
       rooms[id] = r;
@@ -660,8 +874,13 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Future<List<String>> _shallowKeys(String path) async {
     // Realtime Database REST API: ?shallow=true sadece anahtarları döndürür.
     try {
+      String? token;
+      try {
+        token = await auth.currentUser?.getIdToken();
+      } catch (_) {}
       final res = await http
-          .get(Uri.parse('${FirebaseConfig.databaseUrl}/$path.json?shallow=true'))
+          .get(Uri.parse(
+              '${FirebaseConfig.databaseUrl}/$path.json?shallow=true${token != null ? '&auth=$token' : ''}'))
           .timeout(const Duration(seconds: 15));
       if (res.statusCode != 200) return [];
       final json = jsonDecode(res.body);
@@ -685,7 +904,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     final ref = db.ref('rooms').push();
       final data = <String, Object?>{
         'name': name,
-        'password': (password == null || password.isEmpty) ? null : password,
+        'passwordHash': (password == null || password.trim().isEmpty)
+            ? null
+            : roomPasswordHash(ref.key!, password.trim()),
         'isPrivate': isPrivate,
         'createdBy': uid,
         'createdAt': ServerValue.timestamp,
@@ -814,6 +1035,18 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     final uid = _uid;
     if (uid == null) return 'Oturum yok.';
     if (next.length < 6) return 'Yeni şifre en az 6 karakter olmalı.';
+    final u = auth.currentUser;
+    if (u != null) {
+      try {
+        await u.reauthenticateWithCredential(
+            EmailAuthProvider.credential(email: authEmail(uid), password: authPassword(current)));
+        await u.updatePassword(authPassword(next));
+        return null;
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'network-request-failed') return 'İnternet bağlantını kontrol et.';
+        return 'Mevcut şifre hatalı.';
+      }
+    }
     final s = await db.ref('users/$uid/password').get();
     if (asStr(s.value) != current) return 'Mevcut şifre hatalı.';
     await db.ref('users/$uid/password').set(next);
@@ -827,7 +1060,12 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     final v = validateUsername(next);
     if (v != null) return v;
     if (await isUsernameTaken(next)) return 'Bu kullanıcı adı alınmış.';
+    final old = _username ?? '';
     await db.ref('users/$uid/username').set(next);
+    if (old.isNotEmpty && nameKey(old) != nameKey(next)) {
+      await db.ref('usernames/${nameKey(old)}/$uid').remove().catchError((_) {});
+    }
+    await db.ref('usernames/${nameKey(next)}/$uid').set(true).catchError((_) {});
     _username = next;
     await prefs.setString('username', next);
     notifyListeners();

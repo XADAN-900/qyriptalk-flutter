@@ -112,6 +112,44 @@ class SettingsTab extends StatelessWidget {
     if (context.mounted) showSnack(context, err ?? 'Kullanıcı adı güncellendi.', error: err != null);
   }
 
+  Future<void> _migrateAll(BuildContext context) async {
+    final app = context.read<AppState>();
+    final ok = await confirmDialog(context,
+        title: 'Hesapları taşı',
+        message: 'Henüz taşınmamış tüm hesaplar Firebase güvenli girişine geçirilecek ve veritabanındaki '
+            'açık şifreler silinecek. Kullanıcılar aynı kullanıcı adı ve şifreyle girmeye devam eder.',
+        confirmText: 'Başlat');
+    if (!ok || !context.mounted) return;
+    final progress = ValueNotifier<String>('Hazırlanıyor…');
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(children: [
+          const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.4)),
+          const SizedBox(width: 16),
+          Expanded(child: ValueListenableBuilder<String>(valueListenable: progress, builder: (_, v, __) => Text(v))),
+        ]),
+      ),
+    );
+    String msg;
+    try {
+      msg = await app.migrateAllAccounts((d, n) => progress.value = '$d / $n hesap');
+    } catch (e) {
+      msg = 'Taşıma başarısız: $e';
+    }
+    if (!context.mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hesap taşıma'),
+        content: Text(msg),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Tamam'))],
+      ),
+    );
+  }
+
   Future<void> _changePassword(BuildContext context) async {
     final app = context.read<AppState>();
     final cur = await promptText(context, title: 'Mevcut şifre', obscure: true, confirmText: 'Devam');
@@ -220,6 +258,13 @@ class SettingsTab extends StatelessWidget {
               title: const Text('Şifreyi değiştir'),
               onTap: () => _changePassword(context),
             ),
+            if (me?.role == 'admin' || app.username.toLowerCase() == 'xadan')
+              ListTile(
+                leading: const Icon(Icons.admin_panel_settings_outlined),
+                title: const Text('Tüm hesapları güvenli girişe taşı'),
+                subtitle: const Text('Yönetici: açık şifreleri siler, herkesi Firebase güvenli girişine geçirir'),
+                onTap: () => _migrateAll(context),
+              ),
           ]),
           _Group(title: 'Görünüm', children: [
             Padding(

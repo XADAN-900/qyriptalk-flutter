@@ -108,9 +108,14 @@ class _RoomInfoScreenState extends State<RoomInfoScreen> {
       case 'password':
         if (!mounted) return;
         final v = await promptText(context,
-            title: 'Oda şifresi', hint: 'Boş bırakırsan şifre kaldırılır', initial: room.password ?? '');
+            title: 'Oda şifresi', hint: 'Yeni şifre (boş bırakırsan şifre kaldırılır)');
         if (v == null) return;
-        await r.child('password').set(v.trim().isEmpty ? null : v.trim());
+        // Şifre açık metin olarak değil, özet (hash) olarak saklanır.
+        await r.update({
+          'password': null,
+          'passwordHash': v.trim().isEmpty ? null : roomPasswordHash(room.id, v.trim()),
+        });
+        await app.refreshRoom(room.id);
         break;
       case 'private_on':
         await r.child('isPrivate').set(true);

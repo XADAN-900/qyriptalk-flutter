@@ -1,0 +1,91 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "authMap": {
+      "$a": {
+        ".read": "auth != null && auth.uid === $a",
+        ".write": "auth != null && auth.uid === $a && newData.isString() && auth.token.email === newData.val().toLowerCase() + '@users.qyriptalk.app'"
+      }
+    },
+    "usernames": {
+      ".read": true,
+      "$name": {
+        "$uid": {
+          ".write": "auth != null && root.child('authMap').child(auth.uid).val() === $uid"
+        }
+      }
+    },
+    "users": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "(auth != null && root.child('authMap').child(auth.uid).val() === $uid) || (auth != null && root.child('users').child(root.child('authMap').child(auth.uid).val() + '').child('role').val() === 'admin')",
+        "password": {
+          ".validate": false
+        },
+        "role": {
+          ".validate": "newData.val() === data.val() || (auth != null && root.child('users').child(root.child('authMap').child(auth.uid).val() + '').child('role').val() === 'admin') || (!data.exists() && newData.val() === 'user')"
+        }
+      }
+    },
+    "rooms": {
+      ".read": "auth != null",
+      "$room": {
+        ".write": "auth != null && ((!data.exists() && newData.child('createdBy').val() === root.child('authMap').child(auth.uid).val()) || data.child('createdBy').val() === root.child('authMap').child(auth.uid).val() || (auth != null && root.child('users').child(root.child('authMap').child(auth.uid).val() + '').child('role').val() === 'admin'))",
+        "messages": {
+          "$msg": {
+            ".write": "(auth != null && root.child('rooms').child($room).child('users').child(root.child('authMap').child(auth.uid).val() + '').exists()) && (data.exists() ? (data.child('senderUid').val() === root.child('authMap').child(auth.uid).val() || root.child('rooms').child($room).child('createdBy').val() === root.child('authMap').child(auth.uid).val()) : newData.child('senderUid').val() === root.child('authMap').child(auth.uid).val())",
+            "readBy": {
+              "$u": {
+                ".write": "(auth != null && root.child('rooms').child($room).child('users').child(root.child('authMap').child(auth.uid).val() + '').exists()) && $u === root.child('authMap').child(auth.uid).val()"
+              }
+            },
+            "reactions": {
+              "$u": {
+                ".write": "(auth != null && root.child('rooms').child($room).child('users').child(root.child('authMap').child(auth.uid).val() + '').exists()) && $u === root.child('authMap').child(auth.uid).val()"
+              }
+            }
+          }
+        },
+        "users": {
+          "$u": {
+            ".write": "auth != null && (($u === root.child('authMap').child(auth.uid).val() && !root.child('rooms').child($room).child('bannedUsers').child($u).exists()) || root.child('rooms').child($room).child('createdBy').val() === root.child('authMap').child(auth.uid).val())"
+          }
+        },
+        "typing": {
+          "$u": {
+            ".write": "(auth != null && root.child('rooms').child($room).child('users').child(root.child('authMap').child(auth.uid).val() + '').exists()) && $u === root.child('authMap').child(auth.uid).val()"
+          }
+        },
+        "pinnedMessage": {
+          ".write": "auth != null && root.child('rooms').child($room).child('users').child(root.child('authMap').child(auth.uid).val() + '').exists()"
+        },
+        "bannedUsers": {
+          ".write": "auth != null && root.child('rooms').child($room).child('createdBy').val() === root.child('authMap').child(auth.uid).val()"
+        }
+      }
+    },
+    "privateMessages": {
+      "$dm": {
+        ".read": "auth != null && ($dm.beginsWith(root.child('authMap').child(auth.uid).val() + '_') || $dm.endsWith('_' + root.child('authMap').child(auth.uid).val()))",
+        ".write": "auth != null && ($dm.beginsWith(root.child('authMap').child(auth.uid).val() + '_') || $dm.endsWith('_' + root.child('authMap').child(auth.uid).val()))"
+      }
+    },
+    "calls": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "callInvites": {
+      "$uid": {
+        ".read": "auth != null && root.child('authMap').child(auth.uid).val() === $uid",
+        ".write": "auth != null"
+      }
+    },
+    "fcmTokens": {
+      "$uid": {
+        ".read": "auth != null && root.child('authMap').child(auth.uid).val() === $uid",
+        ".write": "auth != null && root.child('authMap').child(auth.uid).val() === $uid"
+      }
+    }
+  }
+}

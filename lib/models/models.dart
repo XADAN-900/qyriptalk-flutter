@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
+
 import '../core/utils.dart';
 
 class AppUser {
@@ -42,7 +46,8 @@ class Room {
   final String name;
   final String? logo;
   final bool isPrivate;
-  final String? password;
+  final String? password; // eski odalar: açık metin (otomatik hash'e çevrilir)
+  final String? passwordHash;
   final String createdBy;
   final int createdAt;
   final String description;
@@ -53,12 +58,21 @@ class Room {
     this.logo,
     this.isPrivate = false,
     this.password,
+    this.passwordHash,
     this.createdBy = '',
     this.createdAt = 0,
     this.description = '',
   });
 
-  bool get hasPassword => password != null && password!.isNotEmpty;
+  bool get hasPassword =>
+      (passwordHash != null && passwordHash!.isNotEmpty) || (password != null && password!.isNotEmpty);
+
+  /// Oda şifresi doğru mu? (Şifre artık açık metin değil, özet olarak saklanır.)
+  bool checkPassword(String pw) {
+    final h = passwordHash;
+    if (h != null && h.isNotEmpty) return roomPasswordHash(id, pw.trim()) == h;
+    return pw.trim() == (password ?? '');
+  }
 
   factory Room.fromMap(String id, Map<String, dynamic> m) => Room(
         id: id,
@@ -66,6 +80,7 @@ class Room {
         logo: asStrOrNull(m['logo']),
         isPrivate: asBool(m['isPrivate']),
         password: asStrOrNull(m['password']),
+        passwordHash: asStrOrNull(m['passwordHash']),
         createdBy: asStr(m['createdBy']),
         createdAt: asInt(m['createdAt']),
         description: asStr(m['description']),
@@ -275,3 +290,8 @@ class CallLogEntry {
         targetIsDm: m['targetIsDm'] != false,
       );
 }
+
+
+/// Oda şifresinin özeti (SHA-256, oda kimliğiyle tuzlanmış).
+String roomPasswordHash(String roomId, String pw) =>
+    sha256.convert(utf8.encode('qyriptalk-room:$roomId:$pw')).toString();

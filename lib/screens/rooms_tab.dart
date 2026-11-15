@@ -32,7 +32,7 @@ Future<void> joinRoomFlow(BuildContext context, Room room) async {
     final pw = await promptText(context,
         title: '"${room.name}" şifreli', hint: 'Oda şifresi', obscure: true, confirmText: 'Katıl');
     if (pw == null || !context.mounted) return;
-    if (pw.trim() != room.password) {
+    if (!room.checkPassword(pw)) {
       showSnack(context, 'Yanlış şifre.', error: true);
       return;
     }
