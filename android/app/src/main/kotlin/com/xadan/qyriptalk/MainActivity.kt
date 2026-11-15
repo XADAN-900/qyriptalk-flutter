@@ -48,6 +48,8 @@ class MainActivity : FlutterActivity() {
     private var pendingLaunch: Map<String, String?>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val prev = Thread.getDefaultUncaughtExceptionHandler()
+        if (prev !is QtCrashSaver) Thread.setDefaultUncaughtExceptionHandler(QtCrashSaver(filesDir, prev))
         super.onCreate(savedInstanceState)
         pendingLaunch = describe(intent)
     }
@@ -88,8 +90,49 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /** Uygulama içi güncelleme: indirilen APK'nın kurulumunu başlatır. */
+    private fun setupInstaller(flutterEngine: FlutterEngine) {
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "app/installer").setMethodCallHandler { call, result ->
+            if (call.method != "installApk") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+            try {
+                val path = call.argument<String>("path") ?: throw IllegalArgumentException("path")
+                if (android.os.Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+                    startActivity(
+                        android.content.Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+                            .setData(android.net.Uri.parse("package:$packageName"))
+                    )
+                    result.success("permission")
+                    return@setMethodCallHandler
+                }
+                val uri = UpdateFileProvider.getUriForFile(this, "$packageName.updates", java.io.File(path))
+                val i = android.content.Intent(android.content.Intent.ACTION_VIEW)
+                    .setDataAndType(uri, "application/vnd.android.package-archive")
+                    .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(i)
+                result.success("ok")
+            } catch (e: Exception) {
+                result.error("install", e.message, null)
+            }
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        setupInstaller(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "qyriptalk/crash").setMethodCallHandler { call, result ->
+            val f = java.io.File(filesDir, "last_crash.txt")
+            when (call.method) {
+                "get" -> result.success(if (f.exists()) f.readText() else null)
+                "clear" -> {
+                    f.delete()
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
         val ch = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "qyriptalk/native")
         channel = ch
         ch.setMethodCallHandler { call, result ->
@@ -182,5 +225,25 @@ class MainActivity : FlutterActivity() {
         channel?.setMethodCallHandler(null)
         channel = null
         super.cleanUpFlutterEngine(flutterEngine)
+    }
+}
+
+
+/** Güncelleme APK'sını paket yükleyiciye vermek için (diğer eklentilerin sağlayıcılarıyla çakışmasın). */
+class UpdateFileProvider : androidx.core.content.FileProvider()
+
+/** Yakalanmamış hata uygulamayı kapatırsa raporu dosyaya yazar; sonraki açılışta sessizce yöneticiye gönderilir. */
+class QtCrashSaver(
+    private val dir: java.io.File,
+    private val prev: Thread.UncaughtExceptionHandler?
+) : Thread.UncaughtExceptionHandler {
+    override fun uncaughtException(t: Thread, e: Throwable) {
+        try {
+            java.io.File(dir, "last_crash.txt").writeText(
+                "Qyriptalk çökme raporu\n${java.util.Date()}\nThread: ${t.name}\n\n${android.util.Log.getStackTraceString(e)}"
+            )
+        } catch (x: Exception) {
+        }
+        prev?.uncaughtException(t, e)
     }
 }

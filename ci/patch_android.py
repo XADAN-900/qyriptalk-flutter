@@ -16,6 +16,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent / "android"
 
 # Uygulamanın kendi yerel (Java) kodunun ihtiyaç duyduğu kütüphaneler (arka plan servisi).
 EXTRA_DEPS = [
+    'implementation("androidx.core:core:1.13.1")',
     'implementation(platform("com.google.firebase:firebase-bom:33.1.2"))',
     'implementation("com.google.firebase:firebase-database")',
 ]

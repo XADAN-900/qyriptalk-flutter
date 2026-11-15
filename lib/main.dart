@@ -18,6 +18,7 @@ import 'screens/call_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/app_state.dart';
 import 'services/call_service.dart';
+import 'services/app_guard.dart';
 import 'services/native_bridge.dart';
 import 'services/net_status.dart';
 import 'services/notification_service.dart';
@@ -57,6 +58,7 @@ Future<void> main() async {
   runApp(QyriptalkApp(app: app, calls: calls));
   await app.restoreSession();
   calls.syncListening();
+  Future.delayed(const Duration(seconds: 8), () => _uploadLastCrash(app));
   // Uygulama bir bildirimden (Cevapla, tam ekran arama, mesaj) açıldıysa ona git.
   final launch = await NativeBridge.takeLaunchAction();
   if (launch != null) {
@@ -154,6 +156,27 @@ class _QyriptalkAppState extends State<QyriptalkApp> {
   }
 }
 
+/// Uygulama bir önceki açılışta çöktüyse raporu kullanıcıya hiçbir şey göstermeden
+/// yönetici paneline (crashReports) gönderir.
+Future<void> _uploadLastCrash(AppState app) async {
+  const ch = MethodChannel('qyriptalk/crash');
+  String? report;
+  try {
+    report = await ch.invokeMethod<String>('get');
+  } catch (_) {}
+  if (report == null || report.trim().isEmpty || app.uid == null) return;
+  try {
+    await app.db.ref('crashReports').push().set({
+      'report': report.length > 8000 ? report.substring(0, 8000) : report,
+      'uid': app.uid ?? '',
+      'username': app.username,
+      'app': 'Qyriptalk ${AppGuard.build}',
+      'ts': ServerValue.timestamp,
+    }).timeout(const Duration(seconds: 20));
+    await ch.invokeMethod('clear');
+  } catch (_) {}
+}
+
 class _Gate extends StatelessWidget {
   const _Gate();
 
@@ -166,7 +189,17 @@ class _Gate extends StatelessWidget {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 350),
       child: app.isLoggedIn
-          ? HomeScreen(key: ValueKey(app.uid))
+          ? AppGuard(
+              key: ValueKey('guard_${app.uid}'),
+              db: app.db,
+              uid: app.uid!,
+              repo: 'XADAN-900/qyriptalk-flutter',
+              apkName: 'Qyriptalk.apk',
+              appName: 'Qyriptalk',
+              accent: const Color(0xFF7B61FF),
+              onLogout: app.logout,
+              child: HomeScreen(key: ValueKey(app.uid)),
+            )
           : const AuthScreen(key: ValueKey('auth')),
     );
   }
