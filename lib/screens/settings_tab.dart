@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../core/theme.dart';
 import '../core/utils.dart';
 import '../services/app_state.dart';
 import '../services/notification_service.dart';
 import '../widgets/avatar.dart';
+import 'rooms_tab.dart';
 
 class SettingsTab extends StatelessWidget {
   const SettingsTab({super.key});
@@ -55,6 +58,42 @@ class SettingsTab extends StatelessWidget {
     final b = await x.readAsBytes();
     await app.updateProfile(photoDataUrl: toDataUrl(b, 'image/jpeg'));
     if (context.mounted) showSnack(context, 'Profil fotoğrafı güncellendi.');
+  }
+
+  void _showMyQr(BuildContext context) {
+    final app = context.read<AppState>();
+    final code = '$kUserQrPrefix${app.uid}';
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        contentPadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Avatar(name: app.username, photo: app.me?.photo, size: 64, ring: true),
+            const SizedBox(height: 10),
+            Text(app.username, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+              child: QrImageView(data: code, size: 210, backgroundColor: Colors.white),
+            ),
+            const SizedBox(height: 10),
+            Text('Qyriptalk\'ta "QR kod tara" ile okutulabilir',
+                textAlign: TextAlign.center, style: TextStyle(color: Theme.of(ctx).hintColor, fontSize: 13)),
+          ],
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () => Share.share('Qyriptalk\'ta beni ekle: ${app.username}\n$code'),
+            icon: const Icon(Icons.share_rounded),
+            label: const Text('Paylaş'),
+          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Kapat')),
+        ],
+      ),
+    );
   }
 
   Future<void> _editBio(BuildContext context) async {
@@ -153,6 +192,18 @@ class SettingsTab extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           _Group(title: 'Hesap', children: [
+            ListTile(
+              leading: const Icon(Icons.qr_code_2_rounded),
+              title: const Text('QR kodum'),
+              subtitle: const Text('Arkadaşın okutsun, seni hemen bulsun'),
+              onTap: () => _showMyQr(context),
+            ),
+            ListTile(
+              leading: const Icon(Icons.qr_code_scanner_rounded),
+              title: const Text('QR kod tara'),
+              subtitle: const Text('Oda daveti ya da profil kodu'),
+              onTap: () => scanQrFlow(context),
+            ),
             ListTile(
               leading: const Icon(Icons.alternate_email_rounded),
               title: const Text('Kullanıcı adı'),

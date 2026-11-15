@@ -288,7 +288,12 @@ class _ChatsTabState extends State<ChatsTab> {
                 onTap: () => Navigator.push(
                     context, MaterialPageRoute(builder: (_) => const ArchivedChatsScreen())),
               ),
-            if (chats.isEmpty)
+            if (chats.isEmpty && !app.chatsReady)
+              const Padding(
+                padding: EdgeInsets.only(top: 80),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (chats.isEmpty)
               _EmptyChats(searching: _q.isNotEmpty || _filter != 0)
             else
               for (final c in chats) ChatTile(chat: c),

@@ -52,6 +52,12 @@ class _NewChatScreenState extends State<NewChatScreen> {
             onTap: () => showCreateRoomSheet(context),
           ),
           ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.qr_code_scanner_rounded)),
+            title: const Text('QR kod tara', style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: const Text('Oda daveti ya da arkadaşının profil kodu'),
+            onTap: () => scanQrFlow(context),
+          ),
+          ListTile(
             leading: const CircleAvatar(child: Icon(Icons.link_rounded)),
             title: const Text('Davet bağlantısıyla katıl', style: TextStyle(fontWeight: FontWeight.w600)),
             onTap: () => joinByInviteDialog(context),

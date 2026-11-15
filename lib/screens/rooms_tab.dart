@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
@@ -9,6 +10,8 @@ import '../services/app_state.dart';
 import '../widgets/avatar.dart';
 import 'chat_screen.dart';
 import 'home_screen.dart';
+import 'qr_scan_screen.dart';
+import 'user_profile_screen.dart';
 
 /// Odaya katılma akışı: yasak kontrolü, şifre sorma, katıl ve aç.
 Future<void> joinRoomFlow(BuildContext context, Room room) async {
@@ -40,23 +43,88 @@ Future<void> joinRoomFlow(BuildContext context, Room room) async {
   openChat(context, isDm: false, chatId: room.id);
 }
 
-Future<void> joinByInviteDialog(BuildContext context) async {
-  final link = await promptText(context,
-      title: 'Davet bağlantısı', hint: 'Qyriptalk/OdaAdı/OdaID', confirmText: 'Devam');
-  if (link == null || !context.mounted) return;
-  final parsed = AppState.parseInvite(link);
-  if (parsed == null) {
-    showSnack(context, 'Geçersiz davet. Biçim: Qyriptalk/OdaAdı/OdaID', error: true);
+/// Kişi profil QR kodunun öneki (oda davetlerinden ayırmak için).
+const String kUserQrPrefix = 'Qyriptalk/kisi/';
+
+/// QR'dan ya da yapıştırılan bağlantıdan gelen kodu işler: oda daveti ya da kişi profili.
+Future<void> handleScannedCode(BuildContext context, String code) async {
+  final app = context.read<AppState>();
+  final c = code.trim();
+  final ui = c.indexOf(kUserQrPrefix);
+  if (ui >= 0) {
+    final uid = c.substring(ui + kUserQrPrefix.length).split(RegExp(r'[/?#\s]')).first;
+    if (uid == app.uid) {
+      showSnack(context, 'Bu senin kendi QR kodun 🙂');
+      return;
+    }
+    if (uid.isEmpty || !app.users.containsKey(uid)) {
+      showSnack(context, 'Bu QR koduna ait kullanıcı bulunamadı.', error: true);
+      return;
+    }
+    Navigator.push(context, MaterialPageRoute(builder: (_) => UserProfileScreen(uid: uid)));
     return;
   }
-  final app = context.read<AppState>();
+  final parsed = AppState.parseInvite(c);
+  if (parsed == null) {
+    showSnack(context, 'Bu bir Qyriptalk davet kodu değil.', error: true);
+    return;
+  }
   final room = await app.refreshRoom(parsed.id);
   if (!context.mounted) return;
   if (room == null) {
-    showSnack(context, 'Oda bulunamadı.', error: true);
+    showSnack(context, 'Oda bulunamadı ya da silinmiş.', error: true);
     return;
   }
   await joinRoomFlow(context, room);
+}
+
+Future<void> scanQrFlow(BuildContext context) async {
+  final code = await Navigator.push<String>(
+    context,
+    MaterialPageRoute(fullscreenDialog: true, builder: (_) => const QrScanScreen()),
+  );
+  if (code == null || !context.mounted) return;
+  await handleScannedCode(context, code);
+}
+
+/// Davetle katıl: QR tara ya da bağlantıyı yapıştır.
+Future<void> joinByInviteDialog(BuildContext context) async {
+  final choice = await showModalBottomSheet<String>(
+    context: context,
+    showDragHandle: true,
+    builder: (ctx) => SafeArea(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: Text('Odaya davetle katıl', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+        ),
+        ListTile(
+          leading: const Icon(Icons.qr_code_scanner_rounded),
+          title: const Text('QR kod tara'),
+          subtitle: const Text('Kamerayla ya da galerideki bir görselden'),
+          onTap: () => Navigator.pop(ctx, 'qr'),
+        ),
+        ListTile(
+          leading: const Icon(Icons.link_rounded),
+          title: const Text('Davet bağlantısı gir'),
+          subtitle: const Text('Qyriptalk/OdaAdı/OdaID'),
+          onTap: () => Navigator.pop(ctx, 'link'),
+        ),
+      ]),
+    ),
+  );
+  if (choice == null || !context.mounted) return;
+  if (choice == 'qr') {
+    await scanQrFlow(context);
+    return;
+  }
+  final clip = await Clipboard.getData(Clipboard.kTextPlain);
+  final initial = (clip?.text ?? '').contains('Qyriptalk/') ? clip!.text!.trim() : '';
+  if (!context.mounted) return;
+  final link = await promptText(context,
+      title: 'Davet bağlantısı', hint: 'Qyriptalk/OdaAdı/OdaID', initial: initial, confirmText: 'Katıl');
+  if (link == null || link.trim().isEmpty || !context.mounted) return;
+  await handleScannedCode(context, link);
 }
 
 Future<void> showCreateRoomSheet(BuildContext context) async {
@@ -112,6 +180,11 @@ class _RoomsTabState extends State<RoomsTab> {
       appBar: AppBar(
         title: const Text('Odalar'),
         actions: [
+          IconButton(
+            tooltip: 'QR kod tara',
+            icon: const Icon(Icons.qr_code_scanner_rounded),
+            onPressed: () => scanQrFlow(context),
+          ),
           IconButton(
             tooltip: 'Davet ile katıl',
             icon: const Icon(Icons.link_rounded),
@@ -179,7 +252,7 @@ class _RoomsTabState extends State<RoomsTab> {
               ),
             ],
             const _Section('Keşfet'),
-            if (_rooms == null || (_loading && discover.isEmpty))
+            if (_rooms == null || !app.chatsReady || (_loading && discover.isEmpty))
               const Padding(
                 padding: EdgeInsets.all(40),
                 child: Center(child: CircularProgressIndicator()),

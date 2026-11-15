@@ -53,6 +53,12 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Map<String, dynamic> settings = {};
   bool connected = true;
   bool foreground = true;
+  bool _usersLoaded = false;
+  bool _joinedLoaded = false;
+  final Set<String> _roomMetaPending = {};
+
+  /// Sohbet listesi ilk kez tamamen yüklendi mi? (Yüklenirken boş ekran / yanıp sönme olmasın.)
+  bool get chatsReady => _usersLoaded && _joinedLoaded && _roomMetaPending.isEmpty;
   String? activeChatKey;
 
   ThemeMode _themeMode = ThemeMode.system;
@@ -255,9 +261,13 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         _username = mine.username;
         prefs.setString('username', mine.username);
       }
+      _usersLoaded = true;
       _syncDmListeners();
       notifyListeners();
-    }, onError: (_) {}));
+    }, onError: (_) {
+      _usersLoaded = true;
+      notifyListeners();
+    }));
 
     _subs.add(db.ref('users/$uid/settings').onValue.listen((e) {
       settings = asMap(e.snapshot.value);
@@ -271,11 +281,20 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         ..clear()
         ..addAll(ids);
       for (final id in ids) {
-        if (!rooms.containsKey(id)) unawaited(refreshRoom(id));
+        if (!rooms.containsKey(id) && _roomMetaPending.add(id)) {
+          unawaited(refreshRoom(id).whenComplete(() {
+            _roomMetaPending.remove(id);
+            notifyListeners();
+          }));
+        }
       }
+      _joinedLoaded = true;
       _syncRoomListeners();
       notifyListeners();
-    }, onError: (_) {}));
+    }, onError: (_) {
+      _joinedLoaded = true;
+      notifyListeners();
+    }));
 
     unawaited(NotificationService.registerToken(db, uid));
   }
@@ -290,6 +309,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     }
     _lastSubs.clear();
     _lastInitialized.clear();
+    _usersLoaded = false;
+    _joinedLoaded = false;
+    _roomMetaPending.clear();
   }
 
   void _setPresence(bool online) {
@@ -406,11 +428,13 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       final key = 'room:$id';
       if (_archived.contains(key) != archived) continue;
       final r = rooms[id];
+      // Bilgisi henüz gelmemiş (ya da silinmiş) odaları gösterme: yanıp sönmesin.
+      if (r == null) continue;
       out.add(ChatSummary(
         id: id,
         isDm: false,
-        title: r?.name ?? 'Oda',
-        photo: r?.logo,
+        title: r.name,
+        photo: r.logo,
         last: _last[key],
         unread: _unread[key] ?? 0,
         muted: _muted.contains(key),
