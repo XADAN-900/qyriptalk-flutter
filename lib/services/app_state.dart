@@ -11,6 +11,8 @@ import '../core/firebase_config.dart';
 import '../core/utils.dart';
 import '../models/models.dart';
 import 'native_bridge.dart';
+import 'net_status.dart';
+import 'offline_store.dart';
 import 'notification_service.dart';
 
 /// Uygulamanın tek gerçek kaynağı: oturum, kullanıcılar, odalar, sohbet özetleri.
@@ -21,6 +23,8 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       databaseURL: FirebaseConfig.databaseUrl,
     );
     WidgetsBinding.instance.addObserver(this);
+    NetStatus.instance.online.addListener(_onNetChanged);
+    NetStatus.instance.onBack.add(() => db.goOnline());
     final ti = prefs.getInt('themeMode') ?? 0;
     _themeMode = (ti >= 0 && ti < ThemeMode.values.length)
         ? ThemeMode.values[ti]
@@ -52,8 +56,10 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   final Set<String> _pinned = {};
   final Set<String> _archived = {};
   Map<String, dynamic> settings = {};
-  bool connected = true;
-  Timer? _offlineTimer;
+  /// Gerçek internet durumu (var / yok).
+  bool get connected => NetStatus.instance.online.value;
+
+  void _onNetChanged() => notifyListeners();
   bool foreground = true;
   bool _usersLoaded = false;
   bool _joinedLoaded = false;
@@ -209,6 +215,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> logout() async {
     final uid = _uid;
     await NativeBridge.clearSession();
+    await OfflineStore.clearAll();
     if (uid != null) {
       try {
         await NotificationService.unregisterToken(db, uid);
@@ -242,26 +249,11 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
     _setPresence(true);
 
+    // İnternetsizken de son sohbetler görünsün: cihazdaki kopyayı hemen yükle.
+    await _loadHomeCache();
+
     _subs.add(db.ref('.info/connected').onValue.listen((e) {
-      final c = e.snapshot.value == true;
-      _offlineTimer?.cancel();
-      if (c) {
-        if (!connected) {
-          connected = true;
-          notifyListeners();
-        }
-        _setPresence(true);
-      } else {
-        // Kısa kopmalar (arama sonrası, uygulamaya dönüş, ağ geçişi) uyarı göstermesin:
-        // sadece 8 saniyeden uzun süren bağlantı kaybında "Bağlantı bekleniyor" çıkar.
-        _offlineTimer = Timer(const Duration(seconds: 8), () {
-          if (connected) {
-            connected = false;
-            notifyListeners();
-          }
-          db.goOnline();
-        });
-      }
+      if (e.snapshot.value == true) _setPresence(true);
     }));
 
     _subs.add(db.ref('users').onValue.listen((e) {
@@ -280,6 +272,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _usersLoaded = true;
       _syncDmListeners();
       notifyListeners();
+      _saveHomeCacheSoon();
     }, onError: (_) {
       _usersLoaded = true;
       notifyListeners();
@@ -307,6 +300,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _joinedLoaded = true;
       _syncRoomListeners();
       notifyListeners();
+      _saveHomeCacheSoon();
     }, onError: (_) {
       _joinedLoaded = true;
       notifyListeners();
@@ -416,6 +410,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         }
       }
       notifyListeners();
+      _saveHomeCacheSoon();
     }, onError: (_) {});
   }
 
@@ -433,6 +428,87 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     if (speakMessages) {
       NotificationService.speak('${msg.sender} diyor ki: ${msg.previewText}');
     }
+  }
+
+  // ======================================================================
+  // ÇEVRİMDIŞI KOPYA (internet yokken son sohbetler)
+  // ======================================================================
+
+  final Map<String, Map<String, dynamic>> _roomRaw = {};
+  Timer? _saveTimer;
+
+  static const int _maxInlineImage = 150 * 1024;
+
+  void _saveHomeCacheSoon() {
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(seconds: 3), _saveHomeCache);
+  }
+
+  Future<void> _saveHomeCache() async {
+    final uid = _uid;
+    if (uid == null || !_usersLoaded) return;
+    String? small(String? s) => (s != null && s.length <= _maxInlineImage) ? s : null;
+    final u = <String, Object?>{};
+    users.forEach((k, v) {
+      u[k] = {
+        'username': v.username,
+        'profilePhoto': small(v.photo),
+        'bio': v.bio,
+        'lastSeen': v.lastSeen,
+        'role': v.role,
+      };
+    });
+    final r = <String, Object?>{};
+    for (final id in joinedRoomIds) {
+      final m = _roomRaw[id];
+      if (m == null) continue;
+      r[id] = {...m, 'logo': small(asStrOrNull(m['logo']))};
+    }
+    final last = <String, Object?>{};
+    _last.forEach((k, m) {
+      final raw = Map<String, dynamic>.from(m.raw)
+        ..remove('fileData')
+        ..remove('imageData');
+      last[k] = {'id': m.id, 'raw': raw};
+    });
+    await OfflineStore.write('home_$uid', OfflineStore.plain({
+      'users': u,
+      'rooms': r,
+      'joined': joinedRoomIds.toList(),
+      'last': last,
+    })!);
+  }
+
+  Future<void> _loadHomeCache() async {
+    final uid = _uid;
+    if (uid == null) return;
+    final data = asMap(await OfflineStore.read('home_$uid'));
+    if (data.isEmpty) return;
+    if (users.isEmpty) {
+      asMap(data['users']).forEach((k, v) {
+        final m = asMap(v);
+        if (m.isNotEmpty) users[k] = AppUser.fromMap(k, m);
+      });
+    }
+    asMap(data['rooms']).forEach((k, v) {
+      final m = asMap(v);
+      if (m.isEmpty || rooms.containsKey(k)) return;
+      rooms[k] = Room.fromMap(k, m);
+      _roomRaw[k] = m;
+    });
+    final joined = data['joined'];
+    if (joined is List && joinedRoomIds.isEmpty) {
+      joinedRoomIds.addAll(joined.map((e) => '$e'));
+    }
+    asMap(data['last']).forEach((k, v) {
+      final m = asMap(v);
+      final id = asStr(m['id']);
+      if (id.isEmpty || _last.containsKey(k)) return;
+      _last[k] = ChatMessage.fromMap(id, asMap(m['raw']));
+    });
+    if (users.isNotEmpty) _usersLoaded = true;
+    _joinedLoaded = true;
+    notifyListeners();
   }
 
   // ======================================================================
@@ -547,6 +623,8 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         if (snaps[i].exists) m[keys[i]] = snaps[i].value;
       }
       if (m['name'] == null) {
+        // İnternet yokken boş gelen yanıt "oda silindi" demek değildir.
+        if (!connected) return rooms[id];
         // Oda silinmiş.
         rooms.remove(id);
         if (joinedRoomIds.contains(id) && _uid != null) {
@@ -557,7 +635,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       }
       final r = Room.fromMap(id, m);
       rooms[id] = r;
+      _roomRaw[id] = m;
       notifyListeners();
+      _saveHomeCacheSoon();
       return r;
     } catch (_) {
       return rooms[id];

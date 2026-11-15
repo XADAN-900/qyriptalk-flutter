@@ -19,6 +19,7 @@ import 'screens/home_screen.dart';
 import 'services/app_state.dart';
 import 'services/call_service.dart';
 import 'services/native_bridge.dart';
+import 'services/net_status.dart';
 import 'services/notification_service.dart';
 
 Future<void> main() async {
@@ -36,7 +37,7 @@ Future<void> main() async {
       databaseURL: FirebaseConfig.databaseUrl,
     );
     db.setPersistenceEnabled(true);
-    db.setPersistenceCacheSizeBytes(40 * 1024 * 1024);
+    db.setPersistenceCacheSizeBytes(100 * 1024 * 1024);
   } catch (_) {}
   if (FirebaseConfig.hasAndroidAppId) {
     FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
@@ -49,6 +50,7 @@ Future<void> main() async {
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   NativeBridge.init();
+  NetStatus.instance.start();
   final prefs = await SharedPreferences.getInstance();
   final app = AppState(prefs);
   final calls = CallService(app);

@@ -114,7 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: const [
                       Icon(Icons.wifi_off_rounded, color: Colors.white, size: 16),
                       SizedBox(width: 8),
-                      Text('Bağlantı bekleniyor…',
+                      Text('İnternet yok',
                           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                     ],
                   ),

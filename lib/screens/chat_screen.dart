@@ -15,6 +15,7 @@ import '../core/theme.dart';
 import '../core/utils.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
+import '../services/offline_store.dart';
 import '../services/call_service.dart';
 import '../services/chat_repo.dart';
 import '../widgets/avatar.dart';
@@ -97,7 +98,62 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _scroll.addListener(_onScroll);
     _input.addListener(_onTextChanged);
     if (!_isDm && !app.rooms.containsKey(widget.chatId)) app.refreshRoom(widget.chatId);
+    _loadOffline();
     _subscribe();
+  }
+
+  // ---------- Çevrimdışı kopya: internet yokken de son mesajlar görünsün ----------
+
+  static const int _offlineCount = 40;
+  static const int _offlineMediaMax = 1500 * 1024;
+  Timer? _offlineSave;
+
+  String get _offlineName => 'chat_${ref.key}';
+
+  Future<void> _loadOffline() async {
+    final data = await OfflineStore.read(_offlineName);
+    if (!mounted || data is! List) return;
+    var added = false;
+    for (final e in data) {
+      final m = asMap(e);
+      final id = asStr(m['id']);
+      if (id.isEmpty) continue;
+      final i = _indexFor(id);
+      if (i < _msgs.length && _msgs[i].id == id) continue; // canlı veri zaten geldi
+      _msgs.insert(i, ChatMessage.fromMap(id, asMap(m['raw'])));
+      added = true;
+    }
+    if (added) {
+      setState(() => _loaded = true);
+    }
+  }
+
+  void _saveOfflineSoon() {
+    _offlineSave?.cancel();
+    _offlineSave = Timer(const Duration(seconds: 2), _writeOffline);
+  }
+
+  void _writeOffline() {
+    {
+      final list = <Object?>[];
+      var media = 0;
+      for (final m in _msgs.reversed.take(_offlineCount)) {
+        final raw = Map<String, dynamic>.from(m.raw);
+        final f = asStrOrNull(raw['fileData']) ?? asStrOrNull(raw['imageData']);
+        if (f != null) {
+          // Büyük medya kopyası saklanmaz (cihaz dolmasın); yazı ve küçük fotoğraflar saklanır.
+          if (f.length > _offlineMediaMax || media + f.length > 6 * 1024 * 1024) {
+            raw.remove('fileData');
+            raw.remove('imageData');
+          } else {
+            media += f.length;
+          }
+        }
+        list.add({'id': m.id, 'raw': raw});
+      }
+      OfflineStore.write(_offlineName, OfflineStore.plain(list.reversed.toList())!);
+      OfflineStore.prune('chat_', 15);
+    }
   }
 
   void _subscribe() {
@@ -183,6 +239,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     } else {
       _msgs.insert(i, m);
       final isNewest = i == _msgs.length - 1;
+      if (isNewest) _saveOfflineSoon();
       if (_loaded && isNewest && m.senderUid != _myUid && _scroll.hasClients && _scroll.offset > 300) {
         _newWhileUp++;
       }
@@ -199,6 +256,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final m = ChatMessage.fromMap(k, asMap(e.snapshot.value));
       _msgs[i] = m;
       if (m.edited) _translations.remove(k);
+      _saveOfflineSoon();
       if (mounted) setState(() {});
     }
   }
@@ -206,6 +264,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _onRemoved(DatabaseEvent e) async {
     final k = e.snapshot.key;
     if (k == null) return;
+    // İnternet yokken silme kararı verilmez.
+    if (!app.connected) return;
     // limitToLast penceresinden düşen mesaj silinmiş sayılmaz: gerçekten var mı bak.
     try {
       final s = await ref.messages.child(k).get();
@@ -215,6 +275,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (i < _msgs.length && _msgs[i].id == k) {
       _msgs.removeAt(i);
       _selected.remove(k);
+      _saveOfflineSoon();
       if (mounted) setState(() {});
     }
   }
@@ -840,6 +901,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     app.markChatClosed(ref.key);
     ref.setTyping(false);
+    if (_offlineSave?.isActive ?? false) {
+      _offlineSave!.cancel();
+      _writeOffline();
+    }
     for (final s in _subs) {
       s.cancel();
     }
