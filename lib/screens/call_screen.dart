@@ -100,13 +100,18 @@ class _CallScreenState extends State<CallScreen> with SingleTickerProviderStateM
                   ],
                 ),
                 const Spacer(flex: 2),
+                // Sabit boyutlu alan: büyüyen halkalar alttaki yazıları itmesin.
                 AnimatedBuilder(
                   animation: _pulse,
                   builder: (_, child) {
                     final ringing = phase == CallPhase.incoming || phase == CallPhase.outgoing;
                     final v = _pulse.value;
-                    return Stack(
+                    return SizedBox(
+                      width: 270,
+                      height: 270,
+                      child: Stack(
                       alignment: Alignment.center,
+                      clipBehavior: Clip.none,
                       children: [
                         if (ringing)
                           for (final d in [0.0, 0.5])
@@ -123,6 +128,7 @@ class _CallScreenState extends State<CallScreen> with SingleTickerProviderStateM
                             ),
                         child!,
                       ],
+                    ),
                     );
                   },
                   child: Avatar(
@@ -132,7 +138,7 @@ class _CallScreenState extends State<CallScreen> with SingleTickerProviderStateM
                     isGroup: calls.callType == 'room',
                   ),
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 8),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Text(
