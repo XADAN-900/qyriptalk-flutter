@@ -7,7 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import '../core/theme.dart';
 import '../core/utils.dart';
 import '../services/app_state.dart';
-import '../services/notification_service.dart';
+import '../services/native_bridge.dart';
 import '../widgets/avatar.dart';
 import 'rooms_tab.dart';
 
@@ -262,17 +262,35 @@ class SettingsTab extends StatelessWidget {
               onChanged: (v) => app.setSetting('speakMessages', v),
             ),
             ListTile(
-              leading: const Icon(Icons.notification_add_outlined),
-              title: const Text('Bildirimi dene'),
+              leading: const Icon(Icons.phone_in_talk_outlined),
+              title: const Text('Tam ekran arama izni'),
+              subtitle: const Text('Ekran kapalıyken gelen arama WhatsApp gibi tam ekran çalsın'),
               onTap: () async {
-                await NotificationService.requestPermission();
-                await NotificationService.showMessage(
-                  key: 'test',
-                  title: 'Qyriptalk',
-                  body: 'Bildirimler çalışıyor 🎉',
-                  silent: !app.soundEnabled,
-                );
+                final ok = await NativeBridge.canUseFullScreen();
+                if (ok) {
+                  if (context.mounted) showSnack(context, 'Tam ekran arama izni zaten açık ✅');
+                } else {
+                  await NativeBridge.openFullScreenSettings();
+                }
               },
+            ),
+            ListTile(
+              leading: const Icon(Icons.battery_saver_outlined),
+              title: const Text('Arka planda çalışma'),
+              subtitle: const Text('Pil kısıtlamasını kaldır; uygulama kapalıyken de mesaj ve arama gelsin'),
+              onTap: () async {
+                final ok = await NativeBridge.isIgnoringBattery();
+                if (ok) {
+                  if (context.mounted) showSnack(context, 'Pil kısıtlaması zaten kapalı ✅');
+                } else {
+                  await NativeBridge.requestIgnoreBattery();
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.tune_rounded),
+              title: const Text('Telefon bildirim ayarları'),
+              onTap: () => NativeBridge.openNotificationSettings(),
             ),
           ]),
           _Group(title: 'Sohbet', children: [

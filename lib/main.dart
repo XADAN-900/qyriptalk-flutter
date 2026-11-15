@@ -18,6 +18,7 @@ import 'screens/call_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/app_state.dart';
 import 'services/call_service.dart';
+import 'services/native_bridge.dart';
 import 'services/notification_service.dart';
 
 Future<void> main() async {
@@ -42,11 +43,18 @@ Future<void> main() async {
   ));
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
+  NativeBridge.init();
   final prefs = await SharedPreferences.getInstance();
   final app = AppState(prefs);
   final calls = CallService(app);
   runApp(QyriptalkApp(app: app, calls: calls));
-  unawaited(app.restoreSession());
+  await app.restoreSession();
+  calls.syncListening();
+  // Uygulama bir bildirimden (Cevapla, tam ekran arama, mesaj) açıldıysa ona git.
+  final launch = await NativeBridge.takeLaunchAction();
+  if (launch != null) {
+    Future.delayed(const Duration(milliseconds: 600), () => NativeBridge.actions.add(launch));
+  }
 }
 
 class QyriptalkApp extends StatefulWidget {
@@ -67,6 +75,12 @@ class _QyriptalkAppState extends State<QyriptalkApp> {
     widget.calls.onPresent = _presentCallScreen;
     widget.app.addListener(_onAppChanged);
     NotificationService.onTap = _onNotificationTap;
+    NativeBridge.actions.stream.listen((a) {
+      if (a['action'] == 'open_conv') {
+        final key = a['convKey'];
+        if (key != null && key.isNotEmpty) widget.app.openChatRequests.add(key);
+      }
+    });
     NotificationService.launchResponse().then((r) {
       final p = r?.payload;
       if (p != null) {

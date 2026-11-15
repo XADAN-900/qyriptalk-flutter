@@ -8,6 +8,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../core/utils.dart';
 import '../models/models.dart';
 import 'app_state.dart';
+import 'native_bridge.dart';
 import 'notification_service.dart';
 
 enum CallPhase { idle, outgoing, incoming, active }
@@ -24,6 +25,34 @@ class CallParticipant {
 class CallService extends ChangeNotifier with WidgetsBindingObserver {
   CallService(this.app) {
     WidgetsBinding.instance.addObserver(this);
+    _nativeSub = NativeBridge.actions.stream.listen(_onNativeAction);
+  }
+
+  StreamSubscription? _nativeSub;
+
+  /// Yerel bildirimden gelen olaylar (Cevapla, tam ekran arama, Reddet, Aramayı bitir).
+  Future<void> _onNativeAction(Map<String, String?> a) async {
+    final action = a['action'];
+    final id = a['callId'] ?? callId;
+    switch (action) {
+      case 'answer':
+        if (id != null) await handleNotificationAction(id, 'answer');
+        break;
+      case 'show_call':
+        if (id != null) await handleNotificationAction(id, null);
+        break;
+      case 'declined':
+        // Yerel taraf veritabanına "reddedildi" yazdı; burada sadece ekranı kapat.
+        if (phase == CallPhase.incoming && (id == null || id == callId)) {
+          _answered = true;
+          _logCall(missed: true, declined: true);
+          _reset();
+        }
+        break;
+      case 'hangup':
+        if (phase != CallPhase.idle) await leave();
+        break;
+    }
   }
 
   final AppState app;
@@ -92,6 +121,12 @@ class CallService extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _foreground = state == AppLifecycleState.resumed;
+    if (_foreground && phase == CallPhase.incoming) {
+      // Uygulamaya dönüldü: yerel zil bildirimini kapat, uygulama içi arama ekranı + zil.
+      NativeBridge.cancelCallNotification();
+      _playLoop('ringtone.wav');
+      onPresent?.call();
+    }
   }
 
   // ------------------------------------------------------------------
@@ -143,10 +178,10 @@ class CallService extends ChangeNotifier with WidgetsBindingObserver {
       }
     });
 
-    _playLoop('ringtone.wav');
-    if (!_foreground) {
-      NotificationService.showIncomingCall(callId: id, title: title, text: statusText);
+    if (_foreground) {
+      _playLoop('ringtone.wav');
     }
+    // Arka planda / ekran kapalıyken zil sesli tam ekran arama bildirimini yerel servis gösterir.
     onPresent?.call();
   }
 
@@ -243,6 +278,7 @@ class CallService extends ChangeNotifier with WidgetsBindingObserver {
     _answered = true;
     await _stopTone();
     await NotificationService.cancelCall(id);
+    await NativeBridge.cancelCallNotification();
     try {
       await _getLocal();
     } catch (_) {
@@ -279,6 +315,7 @@ class CallService extends ChangeNotifier with WidgetsBindingObserver {
     if (uid == null || id == null) return;
     _answered = true;
     await NotificationService.cancelCall(id);
+    await NativeBridge.cancelCallNotification();
     await db.ref('callInvites/$uid/$id').remove();
     await db.ref('calls/$id/participants/$uid').set({
       'username': app.username,
@@ -332,6 +369,7 @@ class CallService extends ChangeNotifier with WidgetsBindingObserver {
           _ringTimeout?.cancel();
           _stopTone();
           _ticker ??= Timer.periodic(const Duration(seconds: 1), (_) => notifyListeners());
+          NativeBridge.setInCall(true);
         }
         statusText = '';
       }
@@ -570,6 +608,7 @@ class CallService extends ChangeNotifier with WidgetsBindingObserver {
     if (id != null) NotificationService.cancelCall(id);
     await _disposeMedia();
     _reset();
+    db.goOnline();
   }
 
   void _logCall({required bool missed, bool declined = false}) {
@@ -619,6 +658,8 @@ class CallService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _reset() {
+    if (connectedAt != null) NativeBridge.setInCall(false);
+    if (phase == CallPhase.incoming) NativeBridge.cancelCallNotification();
     _ringTimeout?.cancel();
     _ringTimeout = null;
     _ticker?.cancel();
@@ -668,6 +709,7 @@ class CallService extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _nativeSub?.cancel();
     _inviteSub?.cancel();
     _reset();
     _tone.dispose();

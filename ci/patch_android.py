@@ -14,6 +14,12 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent / "android"
 
+# Uygulamanın kendi yerel (Java) kodunun ihtiyaç duyduğu kütüphaneler (arka plan servisi).
+EXTRA_DEPS = [
+    'implementation(platform("com.google.firebase:firebase-bom:33.1.2"))',
+    'implementation("com.google.firebase:firebase-database")',
+]
+
 
 def find_block(text, header_regex):
     m = re.search(header_regex, text)
@@ -65,7 +71,10 @@ def patch_kts(p):
     else:
         sys.exit("buildTypes bloğu bulunamadı")
     if "desugar_jdk_libs" not in t:
-        t += '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
+        t += '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n'
+        for dep in EXTRA_DEPS:
+            t += '    ' + dep + '\n'
+        t += '}\n'
     p.write_text(t)
 
 

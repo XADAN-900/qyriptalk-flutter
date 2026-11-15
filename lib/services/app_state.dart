@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/firebase_config.dart';
 import '../core/utils.dart';
 import '../models/models.dart';
+import 'native_bridge.dart';
 import 'notification_service.dart';
 
 /// Uygulamanın tek gerçek kaynağı: oturum, kullanıcılar, odalar, sohbet özetleri.
@@ -52,6 +53,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   final Set<String> _archived = {};
   Map<String, dynamic> settings = {};
   bool connected = true;
+  Timer? _offlineTimer;
   bool foreground = true;
   bool _usersLoaded = false;
   bool _joinedLoaded = false;
@@ -206,6 +208,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> logout() async {
     final uid = _uid;
+    await NativeBridge.clearSession();
     if (uid != null) {
       try {
         await NotificationService.unregisterToken(db, uid);
@@ -241,11 +244,24 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
     _subs.add(db.ref('.info/connected').onValue.listen((e) {
       final c = e.snapshot.value == true;
-      if (c != connected) {
-        connected = c;
-        notifyListeners();
+      _offlineTimer?.cancel();
+      if (c) {
+        if (!connected) {
+          connected = true;
+          notifyListeners();
+        }
+        _setPresence(true);
+      } else {
+        // Kısa kopmalar (arama sonrası, uygulamaya dönüş, ağ geçişi) uyarı göstermesin:
+        // sadece 8 saniyeden uzun süren bağlantı kaybında "Bağlantı bekleniyor" çıkar.
+        _offlineTimer = Timer(const Duration(seconds: 8), () {
+          if (connected) {
+            connected = false;
+            notifyListeners();
+          }
+          db.goOnline();
+        });
       }
-      if (c) _setPresence(true);
     }));
 
     _subs.add(db.ref('users').onValue.listen((e) {
@@ -297,6 +313,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     }));
 
     unawaited(NotificationService.registerToken(db, uid));
+    _syncNative();
   }
 
   Future<void> _stopSession() async {
@@ -392,7 +409,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         } else if (prev?.id != msg.id) {
           if (activeChatKey != key || !foreground) {
             _unread[key] = (_unread[key] ?? 0) + 1;
-            _notifyIncoming(key, chatId, isDm, msg);
+            // Uygulama ekrandayken bildirimi biz gösteririz; arka planda / kapalıyken
+            // yerel servis (sesli, sohbet başına tek bildirim, Yanıtla/Okundu) gösterir.
+            if (foreground) _notifyIncoming(key, chatId, isDm, msg);
           }
         }
       }
@@ -485,6 +504,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       notifyListeners();
     }
     NotificationService.cancelForKey(key);
+    NativeBridge.dismissConversation(key);
   }
 
   void markChatClosed(String key) {
@@ -667,6 +687,21 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   void _mirrorSettings() {
     prefs.setBool('lockscreenPreview', lockscreenPreview);
     prefs.setBool('soundNotifications', soundEnabled);
+    _syncNative();
+  }
+
+  /// Arka plan servisine (uygulama kapalıyken bildirimler) oturum ve tercihleri iletir.
+  void _syncNative() {
+    final uid = _uid;
+    if (uid == null) return;
+    NativeBridge.setSession(
+      uid: uid,
+      username: username,
+      enabled: notificationsEnabled,
+      sound: soundEnabled,
+      preview: lockscreenPreview,
+      speak: speakMessages,
+    );
   }
 
   Future<void> setSetting(String key, Object value) async {

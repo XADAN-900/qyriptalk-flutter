@@ -7,6 +7,7 @@ import '../core/theme.dart';
 import '../core/utils.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
+import '../services/native_bridge.dart';
 import '../widgets/avatar.dart';
 import 'calls_tab.dart';
 import 'chat_screen.dart';
@@ -41,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     final app = context.read<AppState>();
+    _askBackgroundOnce();
     _openSub = app.openChatRequests.stream.listen((key) {
       if (!mounted) return;
       if (key.startsWith('dm:')) {
@@ -49,6 +51,41 @@ class _HomeScreenState extends State<HomeScreen> {
         openChat(context, isDm: false, chatId: key.substring(5));
       }
     });
+  }
+
+  /// İlk girişte bir kez: tam ekran arama izni ve pil kısıtlaması (WhatsApp gibi çalışsın diye).
+  Future<void> _askBackgroundOnce() async {
+    final app = context.read<AppState>();
+    if (app.prefs.getBool('askedBackground') == true) return;
+    await Future.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    final fullOk = await NativeBridge.canUseFullScreen();
+    final battOk = await NativeBridge.isIgnoringBattery();
+    await app.prefs.setBool('askedBackground', true);
+    if ((fullOk && battOk) || !mounted) return;
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.notifications_active_rounded, size: 40),
+        title: const Text('Aramaları kaçırma'),
+        content: const Text(
+          'Uygulama kapalıyken ve ekran kilitliyken de mesaj bildirimleri ve zil sesli, tam ekran '
+          'aramalar gelsin diye iki izin gerekiyor. Açılan ekranlarda Qyriptalk\'a izin ver.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Sonra')),
+          FilledButton(
+            style: FilledButton.styleFrom(minimumSize: const Size(64, 40)),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              if (!battOk) await NativeBridge.requestIgnoreBattery();
+              if (!fullOk) await NativeBridge.openFullScreenSettings();
+            },
+            child: const Text('İzin ver'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
