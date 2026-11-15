@@ -1,0 +1,36 @@
+{
+  "rules": {
+    "users": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && ($uid === auth.uid || data.child('authUid').val() === auth.uid || root.child('authLinks').child(auth.uid).val() === $uid)"
+      }
+    },
+    "usernames": {
+      ".read": true,
+      "$name": {
+        ".write": "auth != null && (!data.exists() || data.child('uid').val() === auth.uid || root.child('authLinks').child(auth.uid).val() === data.child('uid').val())"
+      }
+    },
+    "authLinks": {
+      "$authUid": {
+        ".read": "auth != null && auth.uid === $authUid",
+        ".write": false
+      }
+    },
+    "privateMessages": {
+      "$dmId": {
+        ".read": "auth != null && ($dmId.contains(auth.uid) || $dmId.contains(root.child('authLinks').child(auth.uid).val()))",
+        ".write": "auth != null && ($dmId.contains(auth.uid) || $dmId.contains(root.child('authLinks').child(auth.uid).val()))"
+      }
+    },
+    "rooms": { ".read": "auth != null", ".write": "auth != null" },
+    "calls": { ".read": "auth != null", ".write": "auth != null" },
+    "callInvites": { ".read": "auth != null", ".write": "auth != null" },
+    "fcmTokens": {
+      "$uid": {
+        ".write": "auth != null && ($uid === auth.uid || root.child('authLinks').child(auth.uid).val() === $uid)"
+      }
+    }
+  }
+}
