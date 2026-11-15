@@ -1,0 +1,312 @@
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
+
+import '../core/theme.dart';
+import '../core/utils.dart';
+import '../services/app_state.dart';
+import '../services/notification_service.dart';
+import '../widgets/avatar.dart';
+
+class SettingsTab extends StatelessWidget {
+  const SettingsTab({super.key});
+
+  Future<void> _changePhoto(BuildContext context) async {
+    final app = context.read<AppState>();
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Galeriden seç'),
+              onTap: () => Navigator.pop(ctx, 'gallery'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Fotoğraf çek'),
+              onTap: () => Navigator.pop(ctx, 'camera'),
+            ),
+            if (app.me?.photo != null)
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: QColors.danger),
+                title: const Text('Fotoğrafı kaldır', style: TextStyle(color: QColors.danger)),
+                onTap: () => Navigator.pop(ctx, 'remove'),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (action == null) return;
+    if (action == 'remove') {
+      await app.updateProfile(removePhoto: true);
+      return;
+    }
+    final x = await ImagePicker().pickImage(
+      source: action == 'camera' ? ImageSource.camera : ImageSource.gallery,
+      maxWidth: 512,
+      maxHeight: 512,
+      imageQuality: 82,
+    );
+    if (x == null) return;
+    final b = await x.readAsBytes();
+    await app.updateProfile(photoDataUrl: toDataUrl(b, 'image/jpeg'));
+    if (context.mounted) showSnack(context, 'Profil fotoğrafı güncellendi.');
+  }
+
+  Future<void> _editBio(BuildContext context) async {
+    final app = context.read<AppState>();
+    final v = await promptText(context,
+        title: 'Hakkımda', initial: app.me?.bio ?? '', hint: 'Kendinden bahset', maxLines: 3);
+    if (v == null) return;
+    await app.updateProfile(bio: v.trim());
+  }
+
+  Future<void> _changeUsername(BuildContext context) async {
+    final app = context.read<AppState>();
+    final v = await promptText(context, title: 'Kullanıcı adı', initial: app.username);
+    if (v == null || v.trim() == app.username) return;
+    final err = await app.changeUsername(v);
+    if (context.mounted) showSnack(context, err ?? 'Kullanıcı adı güncellendi.', error: err != null);
+  }
+
+  Future<void> _changePassword(BuildContext context) async {
+    final app = context.read<AppState>();
+    final cur = await promptText(context, title: 'Mevcut şifre', obscure: true, confirmText: 'Devam');
+    if (cur == null || !context.mounted) return;
+    final next = await promptText(context, title: 'Yeni şifre', hint: 'En az 6 karakter', obscure: true);
+    if (next == null) return;
+    final err = await app.changePassword(cur, next);
+    if (context.mounted) showSnack(context, err ?? 'Şifre değiştirildi.', error: err != null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final me = app.me;
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Profil')),
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: 40),
+        children: [
+          const SizedBox(height: 8),
+          Center(
+            child: GestureDetector(
+              onTap: () => _changePhoto(context),
+              child: Stack(
+                children: [
+                  Avatar(name: app.username, photo: me?.photo, size: 108, ring: true),
+                  Positioned(
+                    right: 4,
+                    bottom: 4,
+                    child: CircleAvatar(
+                      radius: 17,
+                      backgroundColor: theme.colorScheme.primary,
+                      child: const Icon(Icons.camera_alt_rounded, size: 18, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(app.username,
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+                if (me != null && me.role != 'user')
+                  Container(
+                    margin: const EdgeInsets.only(left: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      gradient: QColors.brand,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      me.role == 'admin' ? 'Yönetici' : 'Moderatör',
+                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+          Center(
+            child: InkWell(
+              onTap: () => _editBio(context),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                child: Text(
+                  (me?.bio.isNotEmpty ?? false) ? me!.bio : 'Hakkımda ekle…',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: theme.hintColor),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _Group(title: 'Hesap', children: [
+            ListTile(
+              leading: const Icon(Icons.alternate_email_rounded),
+              title: const Text('Kullanıcı adı'),
+              subtitle: Text(app.username),
+              onTap: () => _changeUsername(context),
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit_note_rounded),
+              title: const Text('Hakkımda'),
+              onTap: () => _editBio(context),
+            ),
+            ListTile(
+              leading: const Icon(Icons.key_rounded),
+              title: const Text('Şifreyi değiştir'),
+              onTap: () => _changePassword(context),
+            ),
+          ]),
+          _Group(title: 'Görünüm', children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: SegmentedButton<ThemeMode>(
+                segments: const [
+                  ButtonSegment(value: ThemeMode.system, label: Text('Sistem'), icon: Icon(Icons.brightness_auto)),
+                  ButtonSegment(value: ThemeMode.light, label: Text('Açık'), icon: Icon(Icons.light_mode)),
+                  ButtonSegment(value: ThemeMode.dark, label: Text('Koyu'), icon: Icon(Icons.dark_mode)),
+                ],
+                selected: {app.themeMode},
+                onSelectionChanged: (s) => app.setThemeMode(s.first),
+              ),
+            ),
+          ]),
+          _Group(title: 'Bildirimler', children: [
+            SwitchListTile(
+              secondary: const Icon(Icons.notifications_active_outlined),
+              title: const Text('Mesaj bildirimleri'),
+              value: app.notificationsEnabled,
+              onChanged: (v) => app.setSetting('messageNotifications', v),
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.volume_up_outlined),
+              title: const Text('Bildirim sesi'),
+              value: app.soundEnabled,
+              onChanged: (v) => app.setSetting('soundNotifications', v),
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.lock_outline_rounded),
+              title: const Text('Kilit ekranında içerik'),
+              subtitle: const Text('Kapalıysa sadece "Yeni mesaj" yazar'),
+              value: app.lockscreenPreview,
+              onChanged: (v) => app.setSetting('lockscreenPreview', v),
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.record_voice_over_outlined),
+              title: const Text('Gelen mesajları sesli oku'),
+              value: app.speakMessages,
+              onChanged: (v) => app.setSetting('speakMessages', v),
+            ),
+            ListTile(
+              leading: const Icon(Icons.notification_add_outlined),
+              title: const Text('Bildirimi dene'),
+              onTap: () async {
+                await NotificationService.requestPermission();
+                await NotificationService.showMessage(
+                  key: 'test',
+                  title: 'Qyriptalk',
+                  body: 'Bildirimler çalışıyor 🎉',
+                  silent: !app.soundEnabled,
+                );
+              },
+            ),
+          ]),
+          _Group(title: 'Sohbet', children: [
+            SwitchListTile(
+              secondary: const Icon(Icons.keyboard_return_rounded),
+              title: const Text('Enter ile gönder'),
+              value: app.enterToSend,
+              onChanged: (v) => app.setSetting('enterToSend', v),
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.done_all_rounded),
+              title: const Text('Okundu bilgisi'),
+              subtitle: const Text('Kapalıysa okuduğunu karşı taraf görmez'),
+              value: app.showReadReceipts,
+              onChanged: (v) => app.setSetting('showReadReceipts', v),
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.translate_rounded),
+              title: const Text('Gelen mesajları otomatik çevir'),
+              value: app.autoTranslate,
+              onChanged: (v) => app.setSetting('autoTranslate', v),
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.density_small_rounded),
+              title: const Text('Sıkı görünüm'),
+              value: app.compactMode,
+              onChanged: (v) => app.setSetting('compactMode', v),
+            ),
+          ]),
+          _Group(title: 'Hakkında', children: [
+            const ListTile(
+              leading: Icon(Icons.info_outline_rounded),
+              title: Text('Qyriptalk'),
+              subtitle: Text('Sürüm 2.0.0 · Flutter'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout_rounded, color: QColors.danger),
+              title: const Text('Çıkış yap', style: TextStyle(color: QColors.danger)),
+              onTap: () async {
+                final ok = await confirmDialog(context,
+                    title: 'Çıkış yap',
+                    message: 'Hesabından çıkmak istediğine emin misin?',
+                    confirmText: 'Çıkış yap',
+                    destructive: true);
+                if (ok) await app.logout();
+              },
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+}
+
+class _Group extends StatelessWidget {
+  final String title;
+  final List<Widget> children;
+  const _Group({required this.title, required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 6, bottom: 6),
+            child: Text(title.toUpperCase(),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                  color: theme.colorScheme.primary,
+                )),
+          ),
+          Material(
+            color: theme.brightness == Brightness.dark ? QColors.darkCard : Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            clipBehavior: Clip.antiAlias,
+            child: Column(children: children),
+          ),
+        ],
+      ),
+    );
+  }
+}
