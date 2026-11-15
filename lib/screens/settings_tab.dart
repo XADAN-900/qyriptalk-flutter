@@ -116,7 +116,7 @@ class SettingsTab extends StatelessWidget {
     final app = context.read<AppState>();
     final cur = await promptText(context, title: 'Mevcut şifre', obscure: true, confirmText: 'Devam');
     if (cur == null || !context.mounted) return;
-    final next = await promptText(context, title: 'Yeni şifre', hint: 'En az 8 karakter, harf + rakam', obscure: true);
+    final next = await promptText(context, title: 'Yeni şifre', hint: 'En az 6 karakter', obscure: true);
     if (next == null) return;
     final err = await app.changePassword(cur, next);
     if (context.mounted) showSnack(context, err ?? 'Şifre değiştirildi.', error: err != null);
@@ -203,17 +203,6 @@ class SettingsTab extends StatelessWidget {
               title: const Text('QR kod tara'),
               subtitle: const Text('Oda daveti ya da profil kodu'),
               onTap: () => scanQrFlow(context),
-            ),
-            ListTile(
-              leading: const Icon(Icons.verified_user_rounded, color: QColors.online),
-              title: const Text('E-posta'),
-              subtitle: Text(app.auth.currentUser?.email ?? '—'),
-              trailing: (app.auth.currentUser?.emailVerified ?? false)
-                  ? const Chip(
-                      label: Text('Doğrulandı', style: TextStyle(color: QColors.online, fontWeight: FontWeight.w700)),
-                      visualDensity: VisualDensity.compact,
-                    )
-                  : null,
             ),
             ListTile(
               leading: const Icon(Icons.alternate_email_rounded),

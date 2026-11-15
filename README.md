@@ -57,17 +57,7 @@ flutter build apk --release
 | `FIREBASE_ANDROID_APP_ID` | Firebase konsolunda `com.xadan.qyriptalk` Android uygulamasının kimliği (`1:710550099549:android:...`). Verilirse FCM push açılır: uygulama tamamen kapalıyken de bildirim gelir. Sunucu tarafı (Cloud Functions) eski repodaki `functions/` ile aynıdır. |
 | `QT_KEYSTORE_B64`, `QT_KEYSTORE_PASSWORD` (`QT_KEY_ALIAS`, `QT_KEY_PASSWORD`) | Eski Qyriptalk repo'sundaki imza anahtarının aynısı. Eklenirse yeni sürüm eskisinin **üzerine** kurulur. Eklenmezse, eski uygulamayı kaldırıp yenisini kurman gerekir (paket adı aynı: `com.xadan.qyriptalk`). |
 
-## Güvenlik: hesap doğrulama
+## Güvenlik notu
 
-- Giriş ve kayıt **Firebase Authentication** ile yapılır; yeni hesaplar **e-posta doğrulaması** olmadan içeri giremez.
-- Şifreler artık veritabanında tutulmaz. Eski hesaplar ilk girişte e-posta + yeni güçlü şifre belirleyip
-  hesabını "güvenceye alır"; eski açık şifre silinir. Sohbetler/odalar aynı kalır (`authLinks`).
-- Art arda 5 hatalı girişte artan süreli bekleme, Firebase'in kendi bot/aşırı deneme koruması.
-- Şifre kuralı: en az 8 karakter, harf + rakam.
-
-**Firebase konsolunda bir kez yapılacak:** Authentication → Sign-in method → **Email/Password**'ü etkinleştir.
-
-**Veritabanı kuralları (2. aşama):** Kullanıcıların çoğu hesabını güvenceye aldıktan sonra
-`database.rules.json` dosyasındaki kuralları Realtime Database → Rules'a yapıştır. Bu kurallar giriş yapmamış
-kimsenin veriye erişmesine izin vermez ve özel mesajları sadece iki tarafa açar. Bu kurallar uygulanınca eski
-(güvenceye alınmamış) hesaplar ve eski web sürümü artık giriş yapamaz.
+Uyumluluk için hesap sistemi eski sürümle aynı kaldı (kullanıcı adı + şifre veritabanında). Bir sonraki adım
+olarak Firebase Authentication'a geçiş ve veritabanı kurallarının sıkılaştırılması önerilir.

@@ -24,7 +24,6 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final stage = context.watch<AppState>().authStage;
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -39,11 +38,7 @@ class _AuthScreenState extends State<AuthScreen> {
         child: SafeArea(
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
-            child: stage == AuthStage.verifyEmail
-                ? const _VerifyEmailView(key: ValueKey('verify'))
-                : stage == AuthStage.upgradeLegacy
-                ? const _UpgradeLegacyView(key: ValueKey('upgrade'))
-                : _register
+            child: _register
                 ? _RegisterFlow(
                     key: const ValueKey('reg'),
                     onBackToLogin: () => setState(() => _register = false),
@@ -92,38 +87,6 @@ class _LoginViewState extends State<_LoginView> {
     });
   }
 
-  Future<void> _forgot() async {
-    final c = TextEditingController(text: _user.text.trim());
-    final id = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Şifreni sıfırla'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('Hesabına bağlı e-postaya bir sıfırlama bağlantısı göndereceğiz.'),
-          const SizedBox(height: 12),
-          TextField(
-            controller: c,
-            autofocus: true,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(hintText: 'E-posta veya kullanıcı adı'),
-          ),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
-          FilledButton(
-            style: FilledButton.styleFrom(minimumSize: const Size(64, 40)),
-            onPressed: () => Navigator.pop(ctx, c.text.trim()),
-            child: const Text('Gönder'),
-          ),
-        ],
-      ),
-    );
-    if (id == null || id.isEmpty || !mounted) return;
-    final err = await context.read<AppState>().resetPassword(id);
-    if (!mounted) return;
-    showSnack(context, err ?? 'Sıfırlama bağlantısı e-postana gönderildi. Spam klasörüne de bak.', error: err != null);
-  }
-
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -142,26 +105,18 @@ class _LoginViewState extends State<_LoginView> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Tekrar hoş geldin! Hesabına güvenle giriş yap.',
+                'Tekrar hoş geldin! Hesabına giriş yap.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Theme.of(context).hintColor, fontSize: 15),
               ),
-              if (context.watch<AppState>().securityNotice) ...[
-                const SizedBox(height: 18),
-                const _InfoBox(
-                  'Güvenlik güncellemesi: Qyriptalk artık e-posta doğrulaması kullanıyor. '
-                  'Lütfen tekrar giriş yap; eski hesabını birkaç adımda güvenceye alacağız.',
-                ),
-              ],
-              const SizedBox(height: 28),
+              const SizedBox(height: 32),
               TextField(
                 controller: _user,
                 textInputAction: TextInputAction.next,
-                keyboardType: TextInputType.emailAddress,
-                autofillHints: const [AutofillHints.email, AutofillHints.username],
+                autofillHints: const [AutofillHints.username],
                 decoration: const InputDecoration(
                   prefixIcon: Icon(Icons.alternate_email_rounded),
-                  hintText: 'E-posta veya kullanıcı adı',
+                  hintText: 'Kullanıcı adı',
                 ),
               ),
               const SizedBox(height: 12),
@@ -179,14 +134,11 @@ class _LoginViewState extends State<_LoginView> {
                   ),
                 ),
               ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(onPressed: _busy ? null : _forgot, child: const Text('Şifremi unuttum')),
-              ),
               if (_error != null) ...[
-                _ErrorBox(_error!),
                 const SizedBox(height: 14),
+                _ErrorBox(_error!),
               ],
+              const SizedBox(height: 22),
               _GradientButton(label: 'Giriş yap', busy: _busy, onTap: _submit),
               const SizedBox(height: 26),
               Row(children: [
@@ -233,7 +185,6 @@ class _RegisterFlowState extends State<_RegisterFlow> {
 
   // 1. adım
   final _user = TextEditingController();
-  final _email = TextEditingController();
   final _pass = TextEditingController();
   final _pass2 = TextEditingController();
   bool _obscure = true;
@@ -299,7 +250,7 @@ class _RegisterFlowState extends State<_RegisterFlow> {
   int get _strength {
     final p = _pass.text;
     var s = 0;
-    if (p.length >= 8) s++;
+    if (p.length >= 6) s++;
     if (p.length >= 10) s++;
     if (RegExp(r'[0-9]').hasMatch(p) && RegExp(r'[A-Za-zçğıöşüÇĞİÖŞÜ]').hasMatch(p)) s++;
     if (RegExp(r'[^A-Za-z0-9çğıöşüÇĞİÖŞÜ]').hasMatch(p) || RegExp(r'[A-ZÇĞİÖŞÜ]').hasMatch(p)) s++;
@@ -311,10 +262,7 @@ class _RegisterFlowState extends State<_RegisterFlow> {
     final v = AppState.validateUsername(name);
     if (v != null) return v;
     if (_available == false) return 'Bu kullanıcı adı zaten alınmış.';
-    final e = AppState.validateEmail(_email.text);
-    if (e != null) return e;
-    final pw = AppState.validatePassword(_pass.text);
-    if (pw != null) return pw;
+    if (_pass.text.length < 6) return 'Şifre en az 6 karakter olmalı.';
     if (_pass.text != _pass2.text) return 'Şifreler eşleşmiyor.';
     return null;
   }
@@ -407,7 +355,6 @@ class _RegisterFlowState extends State<_RegisterFlow> {
     });
     final err = await context.read<AppState>().register(
           _user.text,
-          _email.text,
           _pass.text,
           photoDataUrl: _photo == null ? null : toDataUrl(_photo!, 'image/jpeg'),
           bio: _bio.text,
@@ -424,7 +371,7 @@ class _RegisterFlowState extends State<_RegisterFlow> {
     final theme = Theme.of(context);
     const titles = ['Hesabını oluştur', 'Profilini kişiselleştir', 'Her şey hazır!'];
     const subtitles = [
-      'Kullanıcı adı ve e-posta seç. E-postana bir doğrulama bağlantısı göndereceğiz.',
+      'Arkadaşlarının seni bulacağı bir kullanıcı adı seç.',
       'Bir fotoğraf ve kısa bir açıklama ekle. İstersen sonra da değiştirebilirsin.',
       'Profilini kontrol et ve görünümü seç.',
     ];
@@ -544,24 +491,13 @@ class _RegisterFlowState extends State<_RegisterFlow> {
         ),
         const SizedBox(height: 14),
         TextField(
-          controller: _email,
-          keyboardType: TextInputType.emailAddress,
-          textInputAction: TextInputAction.next,
-          autofillHints: const [AutofillHints.email],
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.mail_outline_rounded),
-            hintText: 'E-posta (doğrulama için)',
-          ),
-        ),
-        const SizedBox(height: 14),
-        TextField(
           controller: _pass,
           obscureText: _obscure,
           textInputAction: TextInputAction.next,
           onChanged: (_) => setState(() {}),
           decoration: InputDecoration(
             prefixIcon: const Icon(Icons.lock_outline_rounded),
-            hintText: 'Şifre (en az 8 karakter, harf + rakam)',
+            hintText: 'Şifre (en az 6 karakter)',
             suffixIcon: IconButton(
               icon: Icon(_obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined),
               onPressed: () => setState(() => _obscure = !_obscure),
@@ -751,276 +687,10 @@ class _RegisterFlowState extends State<_RegisterFlow> {
         _Feature(icon: Icons.chat_bubble_rounded, text: 'Arkadaşlarınla özel mesajlaş, odalara katıl'),
         _Feature(icon: Icons.call_rounded, text: 'Ücretsiz sesli ve grup araması yap'),
         _Feature(icon: Icons.mic_rounded, text: 'Sesli mesaj, fotoğraf, video ve dosya gönder'),
-        _Feature(icon: Icons.verified_user_rounded, text: 'Hesabın e-posta doğrulamasıyla korunur'),
         _Feature(icon: Icons.notifications_active_rounded, text: 'Bildirim izni sorulursa "İzin ver"e dokun'),
       ],
     );
   }
-}
-
-// ==========================================================================
-// E-POSTA DOĞRULAMA
-// ==========================================================================
-
-class _VerifyEmailView extends StatefulWidget {
-  const _VerifyEmailView({super.key});
-
-  @override
-  State<_VerifyEmailView> createState() => _VerifyEmailViewState();
-}
-
-class _VerifyEmailViewState extends State<_VerifyEmailView> {
-  Timer? _poll;
-  Timer? _tick;
-  int _cooldown = 60;
-  bool _checking = false;
-  String? _msg;
-  bool _msgError = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _startCooldown();
-    // Kullanıcı bağlantıya tıklayınca kendiliğinden içeri al.
-    _poll = Timer.periodic(const Duration(seconds: 4), (_) => _check(silent: true));
-  }
-
-  void _startCooldown() {
-    _tick?.cancel();
-    setState(() => _cooldown = 60);
-    _tick = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) return;
-      if (_cooldown <= 1) t.cancel();
-      setState(() => _cooldown = _cooldown > 0 ? _cooldown - 1 : 0);
-    });
-  }
-
-  @override
-  void dispose() {
-    _poll?.cancel();
-    _tick?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _check({bool silent = false}) async {
-    if (_checking) return;
-    _checking = true;
-    if (!silent) setState(() {});
-    final ok = await context.read<AppState>().checkVerified();
-    _checking = false;
-    if (!mounted) return;
-    if (!ok && !silent) {
-      setState(() {
-        _msg = 'Henüz doğrulanmadı. E-postadaki bağlantıya dokunduktan sonra tekrar dene.';
-        _msgError = true;
-      });
-    } else if (!silent) {
-      setState(() {});
-    }
-  }
-
-  Future<void> _resend() async {
-    final err = await context.read<AppState>().resendVerification();
-    if (!mounted) return;
-    setState(() {
-      _msg = err ?? 'Doğrulama e-postası tekrar gönderildi.';
-      _msgError = err != null;
-    });
-    if (err == null) _startCooldown();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final theme = Theme.of(context);
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(28),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 110,
-                  height: 110,
-                  decoration: const BoxDecoration(shape: BoxShape.circle, gradient: QColors.brand),
-                  child: const Icon(Icons.mark_email_unread_rounded, color: Colors.white, size: 54),
-                ),
-              ),
-              const SizedBox(height: 24),
-              const Text('E-postanı doğrula',
-                  textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 10),
-              Text.rich(
-                TextSpan(children: [
-                  const TextSpan(text: 'Doğrulama bağlantısını şu adrese gönderdik:\n'),
-                  TextSpan(text: app.pendingEmail, style: const TextStyle(fontWeight: FontWeight.w800)),
-                ]),
-                textAlign: TextAlign.center,
-                style: TextStyle(color: theme.hintColor, fontSize: 15, height: 1.4),
-              ),
-              const SizedBox(height: 18),
-              const _InfoBox('E-postadaki bağlantıya dokun, sonra buraya dön. Birkaç saniye içinde otomatik olarak '
-                  'içeri alınacaksın. Gelmediyse Spam / Gereksiz klasörüne bak.'),
-              if (_msg != null) ...[
-                const SizedBox(height: 12),
-                _msgError ? _ErrorBox(_msg!) : _InfoBox(_msg!),
-              ],
-              const SizedBox(height: 22),
-              _GradientButton(label: 'Doğruladım', busy: _checking, onTap: () => _check()),
-              const SizedBox(height: 10),
-              OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(64, 48),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                onPressed: _cooldown > 0 ? null : _resend,
-                child: Text(_cooldown > 0 ? 'Tekrar gönder ($_cooldown sn)' : 'E-postayı tekrar gönder'),
-              ),
-              const SizedBox(height: 6),
-              TextButton(
-                onPressed: () => app.cancelAuthFlow(),
-                child: const Text('Farklı bir hesapla giriş yap'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ==========================================================================
-// ESKİ HESABI GÜVENCEYE AL
-// ==========================================================================
-
-class _UpgradeLegacyView extends StatefulWidget {
-  const _UpgradeLegacyView({super.key});
-
-  @override
-  State<_UpgradeLegacyView> createState() => _UpgradeLegacyViewState();
-}
-
-class _UpgradeLegacyViewState extends State<_UpgradeLegacyView> {
-  final _email = TextEditingController();
-  final _pass = TextEditingController();
-  final _pass2 = TextEditingController();
-  bool _obscure = true;
-  bool _busy = false;
-  String? _error;
-
-  Future<void> _submit() async {
-    FocusScope.of(context).unfocus();
-    if (_pass.text != _pass2.text) {
-      setState(() => _error = 'Şifreler eşleşmiyor.');
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    final err = await context.read<AppState>().upgradeLegacy(_email.text, _pass.text);
-    if (!mounted) return;
-    setState(() {
-      _busy = false;
-      _error = err;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final theme = Theme.of(context);
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(26),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 96,
-                  height: 96,
-                  decoration: const BoxDecoration(shape: BoxShape.circle, gradient: QColors.brand),
-                  child: const Icon(Icons.shield_rounded, color: Colors.white, size: 50),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text('Hesabını güvenceye al',
-                  textAlign: TextAlign.center, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 8),
-              Text(
-                'Merhaba ${app.legacyName ?? ''}! Hesabın eski güvenlik sistemiyle oluşturulmuş. '
-                'Bir e-posta ve yeni, güçlü bir şifre belirle; e-postanı doğrulayınca tüm sohbetlerin '
-                've odaların aynen devam edecek. Eski şifren sistemden silinecek.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: theme.hintColor, height: 1.4),
-              ),
-              const SizedBox(height: 22),
-              TextField(
-                controller: _email,
-                keyboardType: TextInputType.emailAddress,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(prefixIcon: Icon(Icons.mail_outline_rounded), hintText: 'E-posta'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _pass,
-                obscureText: _obscure,
-                textInputAction: TextInputAction.next,
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.lock_outline_rounded),
-                  hintText: 'Yeni şifre (en az 8 karakter, harf + rakam)',
-                  suffixIcon: IconButton(
-                    icon: Icon(_obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined),
-                    onPressed: () => setState(() => _obscure = !_obscure),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _pass2,
-                obscureText: _obscure,
-                onSubmitted: (_) => _submit(),
-                decoration: const InputDecoration(prefixIcon: Icon(Icons.lock_reset_rounded), hintText: 'Yeni şifre (tekrar)'),
-              ),
-              if (_error != null) ...[const SizedBox(height: 14), _ErrorBox(_error!)],
-              const SizedBox(height: 20),
-              _GradientButton(label: 'Güvenceye al ve doğrula', busy: _busy, onTap: _submit),
-              const SizedBox(height: 6),
-              TextButton(onPressed: _busy ? null : () => app.cancelAuthFlow(), child: const Text('Vazgeç')),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _InfoBox extends StatelessWidget {
-  final String text;
-  const _InfoBox(this.text);
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: QColors.primary.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.info_outline_rounded, color: QColors.primary, size: 20),
-            const SizedBox(width: 8),
-            Expanded(child: Text(text)),
-          ],
-        ),
-      );
 }
 
 // ==========================================================================
