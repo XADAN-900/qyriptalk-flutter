@@ -27,6 +27,8 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       databaseURL: FirebaseConfig.databaseUrl,
     );
     auth = FirebaseAuth.instanceFor(app: Firebase.app());
+    // Doğrulama ve şifre sıfırlama e-postaları Türkçe gelsin.
+    auth.setLanguageCode('tr').catchError((_) {});
     WidgetsBinding.instance.addObserver(this);
     final ti = prefs.getInt('themeMode') ?? 0;
     _themeMode = (ti >= 0 && ti < ThemeMode.values.length)
@@ -226,6 +228,13 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         return 'İnternet bağlantısı yok.';
       case 'user-disabled':
         return 'Bu hesap devre dışı bırakılmış.';
+      case 'configuration-not-found':
+      case 'internal-error':
+        if (e.code == 'configuration-not-found' || (e.message ?? '').contains('CONFIGURATION_NOT_FOUND')) {
+          return 'Firebase Authentication bu projede henüz açılmamış. Firebase konsolu → Authentication → '
+              '"Get started", ardından Sign-in method → Email/Password → Enable.';
+        }
+        return e.message ?? 'Sunucu hatası, biraz sonra tekrar dene.';
       case 'operation-not-allowed':
         return 'E-posta ile giriş Firebase konsolunda kapalı. (Authentication → Sign-in method → Email/Password açılmalı.)';
       case 'requires-recent-login':
