@@ -21,9 +21,13 @@ class _NewChatScreenState extends State<NewChatScreen> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
+    // Gizlilik: listede sadece tanıdıkların (mesajlaştığın / aynı odada olduğun) görünür.
+    // Diğer kullanıcılar ancak kullanıcı adı TAM yazılınca bulunur (Telegram / Instagram gibi).
+    final q = _q.toLowerCase();
     final users = app.users.values.where((u) => u.uid != app.uid).where((u) {
-      if (_q.isEmpty) return true;
-      return u.username.toLowerCase().contains(_q.toLowerCase());
+      final name = u.username.toLowerCase();
+      if (app.isContact(u.uid)) return q.isEmpty || name.contains(q);
+      return q.isNotEmpty && name == q;
     }).toList()
       ..sort((a, b) {
         final ao = app.onlineVisible(a), bo = app.onlineVisible(b);
@@ -41,7 +45,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
               autofocus: false,
               onChanged: (v) => setState(() => _q = v.trim()),
               decoration: const InputDecoration(
-                hintText: 'Kişi ara',
+                hintText: 'Kullanıcı adı yaz',
                 prefixIcon: Icon(Icons.search_rounded),
                 isDense: true,
               ),
@@ -68,12 +72,23 @@ class _NewChatScreenState extends State<NewChatScreen> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text('${users.length} kişi',
+              child: Text(q.isEmpty ? 'Tanıdıkların · ${users.length}' : '${users.length} sonuç',
                   style: TextStyle(color: Theme.of(context).hintColor, fontWeight: FontWeight.w600)),
             ),
           ),
           Expanded(
-            child: ListView.builder(
+            child: users.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      q.isEmpty
+                          ? 'Henüz kimseyle mesajlaşmadın. Birini bulmak için kullanıcı adını tam olarak yaz.'
+                          : 'Bu kullanıcı adıyla kimse bulunamadı. Kullanıcı adını tam olarak yazmalısın.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Theme.of(context).hintColor),
+                    ),
+                  )
+                : ListView.builder(
               itemCount: users.length,
               itemBuilder: (_, i) {
                 final u = users[i];
