@@ -24,7 +24,12 @@ import 'services/notification_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('tr_TR');
-  await Firebase.initializeApp(options: FirebaseConfig.options);
+  try {
+    await Firebase.initializeApp(options: FirebaseConfig.options);
+  } catch (_) {
+    // Arka plan servisi uygulamayı önceden başlatmış olabilir: var olanı kullan.
+    if (Firebase.apps.isEmpty) rethrow;
+  }
   try {
     final db = FirebaseDatabase.instanceFor(
       app: Firebase.app(),
