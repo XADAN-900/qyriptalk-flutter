@@ -484,6 +484,13 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       notifyListeners();
     }));
 
+    _subs.add(db.ref('users/$uid/clearedChats').onValue.listen((e) {
+      _cleared
+        ..clear()
+        ..addAll(asMap(e.snapshot.value).map((k, v) => MapEntry(k, asStr(v))));
+      notifyListeners();
+    }, onError: (_) {}));
+
     _subs.add(db.ref('users/$uid/settings').onValue.listen((e) {
       settings = asMap(e.snapshot.value);
       _mirrorSettings();
@@ -526,6 +533,11 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     }
     _lastSubs.clear();
     _lastInitialized.clear();
+    for (final s in _memberSubs.values) {
+      await s.cancel();
+    }
+    _memberSubs.clear();
+    _roomMembers.clear();
     _usersLoaded = false;
     _joinedLoaded = false;
     _roomMetaPending.clear();
@@ -564,6 +576,14 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   void _syncRoomListeners() {
     for (final id in joinedRoomIds) {
       _listenLast('room:$id', 'rooms/$id/messages', id, false);
+      _memberSubs[id] ??= db.ref('rooms/$id/users').onValue.listen((e) {
+        _roomMembers[id] = asMap(e.snapshot.value).keys.toSet();
+        notifyListeners();
+      }, onError: (_) {});
+    }
+    for (final id in _memberSubs.keys.where((k) => !joinedRoomIds.contains(k)).toList()) {
+      _memberSubs.remove(id)?.cancel();
+      _roomMembers.remove(id);
     }
     final stale = _lastSubs.keys
         .where((k) => k.startsWith('room:') && !joinedRoomIds.contains(k.substring(5)))
@@ -574,6 +594,48 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _unread.remove(k);
     }
   }
+
+  // ---------- Gizlilik: çevrimiçi / son görülme sadece tanıdıklara ----------
+  final Map<String, StreamSubscription> _memberSubs = {};
+  final Map<String, Set<String>> _roomMembers = {};
+
+  /// Mesajlaştığın ya da aynı odada olduğun kişi mi?
+  bool isContact(String uid) {
+    final me = _uid;
+    if (me == null || uid == me) return false;
+    if (_last.containsKey('dm:${dmIdFor(me, uid)}')) return true;
+    for (final s in _roomMembers.values) {
+      if (s.contains(uid)) return true;
+    }
+    return false;
+  }
+
+  /// Çevrimiçi göstergesi (tanımadığın kişilerde hiç gösterilmez).
+  bool onlineVisible(AppUser? u) => u != null && u.isOnline && isContact(u.uid);
+
+  /// "çevrimiçi" / "son görülme ..." yazısı (tanımadığın kişilerde boş).
+  String presenceText(AppUser? u) => (u == null || !isContact(u.uid)) ? '' : u.statusText;
+
+  // ---------- Sohbeti temizle (sadece kendin için) ----------
+  /// sohbet anahtarı -> temizlendiği andaki son mesajın kimliği (o ve öncesi gizlenir)
+  final Map<String, String> _cleared = {};
+
+  bool isClearedMsg(String key, String msgId) {
+    final c = _cleared[key];
+    return c != null && msgId.compareTo(c) <= 0;
+  }
+
+  Future<void> clearChat(String key, String? lastMsgId) async {
+    final uid = _uid;
+    if (uid == null || lastMsgId == null) return;
+    _cleared[key] = lastMsgId;
+    _unread[key] = 0;
+    notifyListeners();
+    await OfflineStore.write('chat_$key', const <Object?>[]);
+    await db.ref('users/$uid/clearedChats/${_safeKey(key)}').set(lastMsgId).catchError((_) {});
+  }
+
+  static String _safeKey(String key) => key.replaceAll(RegExp(r'[.#$\[\]/]'), '_');
 
   void _syncDmListeners() {
     final uid = _uid;
@@ -603,7 +665,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       final mine = msg.senderUid == _uid;
       if (!mine) {
         if (firstLoad) {
-          if (!msg.readBy.contains(_uid) && (activeChatKey != key || !foreground)) {
+          if (!msg.readBy.contains(_uid) && !isClearedMsg(key, msg.id) && (activeChatKey != key || !foreground)) {
             _unread[key] = (_unread[key] ?? 0) < 1 ? 1 : _unread[key]!;
           }
         } else if (prev?.id != msg.id) {
@@ -736,7 +798,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         isDm: false,
         title: r.name,
         photo: r.logo,
-        last: _last[key],
+        last: (_last[key] != null && isClearedMsg(key, _last[key]!.id)) ? null : _last[key],
         unread: _unread[key] ?? 0,
         muted: _muted.contains(key),
         pinned: _pinned.contains(key),
@@ -755,7 +817,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         title: u.username,
         photo: u.photo,
         otherUid: other,
-        last: msg,
+        last: isClearedMsg(key, msg.id) ? null : msg,
         unread: _unread[key] ?? 0,
         online: u.isOnline,
         muted: _muted.contains(key),

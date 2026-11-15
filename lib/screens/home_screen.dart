@@ -206,7 +206,7 @@ class _ChatsTabState extends State<ChatsTab> {
     if (_filter == 3) chats = chats.where((c) => !c.isDm).toList();
 
     final onlineUsers = app.users.values
-        .where((u) => u.isOnline && u.uid != app.uid)
+        .where((u) => app.onlineVisible(u))
         .toList()
       ..sort((a, b) => a.username.toLowerCase().compareTo(b.username.toLowerCase()));
     final archivedCount = app.archivedCount;

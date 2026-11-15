@@ -26,7 +26,8 @@ class _NewChatScreenState extends State<NewChatScreen> {
       return u.username.toLowerCase().contains(_q.toLowerCase());
     }).toList()
       ..sort((a, b) {
-        if (a.isOnline != b.isOnline) return a.isOnline ? -1 : 1;
+        final ao = app.onlineVisible(a), bo = app.onlineVisible(b);
+        if (ao != bo) return ao ? -1 : 1;
         return a.username.toLowerCase().compareTo(b.username.toLowerCase());
       });
 
@@ -77,9 +78,9 @@ class _NewChatScreenState extends State<NewChatScreen> {
               itemBuilder: (_, i) {
                 final u = users[i];
                 return ListTile(
-                  leading: Avatar(name: u.username, photo: u.photo, size: 46, online: u.isOnline),
+                  leading: Avatar(name: u.username, photo: u.photo, size: 46, online: app.onlineVisible(u)),
                   title: Text(u.username, style: const TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text(u.bio.isNotEmpty ? u.bio : u.statusText,
+                  subtitle: Text(u.bio.isNotEmpty ? u.bio : app.presenceText(u),
                       maxLines: 1, overflow: TextOverflow.ellipsis),
                   trailing: IconButton(
                     icon: const Icon(Icons.info_outline_rounded),

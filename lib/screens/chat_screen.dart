@@ -916,11 +916,34 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  /// Mesajları SADECE bu kullanıcı için siler (karşı taraf / oda üyeleri etkilenmez).
+  Future<void> _clearChat() async {
+    if (_msgs.isEmpty) {
+      showSnack(context, 'Sohbet zaten boş.');
+      return;
+    }
+    final ok = await confirmDialog(context,
+        title: 'Sohbeti temizle',
+        message: 'Bu sohbetteki tüm mesajlar senin için silinecek. '
+            '${_isDm ? 'Karşı taraf' : 'Odadaki diğer kişiler'} mesajları görmeye devam eder.',
+        confirmText: 'Temizle',
+        destructive: true);
+    if (!ok || !mounted) return;
+    await app.clearChat(ref.key, _msgs.last.id);
+    if (!mounted) return;
+    setState(() {
+      _selected.clear();
+      _replyTo = null;
+    });
+    showSnack(context, 'Sohbet temizlendi.');
+  }
+
   // ------------------------------------------------------------------
   // Arayüz
   // ------------------------------------------------------------------
   List<_Entry> _entries() {
-    var list = _msgs;
+    // "Sohbeti temizle" ile gizlenen (sadece bu kullanıcı için) mesajlar gösterilmez.
+    var list = _msgs.where((m) => !app.isClearedMsg(ref.key, m.id)).toList();
     if (_searching && _query.isNotEmpty) {
       final q = _query.toLowerCase();
       list = list
@@ -971,7 +994,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (_typing.isNotEmpty) {
       subtitle = _isDm ? 'yazıyor…' : '${_typing.join(', ')} yazıyor…';
     } else if (_isDm) {
-      subtitle = other?.statusText ?? '';
+      subtitle = app.presenceText(other);
     } else {
       final online = _members.values.where((v) => asBool(asMap(v)['online'])).length;
       subtitle = '${_members.length} üye${online > 0 ? ' · $online çevrimiçi' : ''}';
@@ -1052,7 +1075,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                               name: _title(),
                               photo: _isDm ? other?.photo : room?.logo,
                               size: 40,
-                              online: other?.isOnline ?? false,
+                              online: app.onlineVisible(other),
                               isGroup: !_isDm,
                             ),
                           ),
@@ -1072,7 +1095,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                   style: TextStyle(
                                     fontSize: 12.5,
                                     fontWeight: FontWeight.w400,
-                                    color: _typing.isNotEmpty || (other?.isOnline ?? false)
+                                    color: _typing.isNotEmpty || app.onlineVisible(other)
                                         ? QColors.online
                                         : theme.hintColor,
                                   ),
@@ -1101,6 +1124,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             case 'mute':
                               app.toggleMute(ref.key);
                               break;
+                            case 'clear':
+                              _clearChat();
+                              break;
                           }
                         },
                         itemBuilder: (_) => [
@@ -1110,6 +1136,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           PopupMenuItem(
                               value: 'mute',
                               child: Text(app.isMuted(ref.key) ? 'Bildirimleri aç' : 'Sessize al')),
+                          const PopupMenuItem(value: 'clear', child: Text('Sohbeti temizle')),
                         ],
                       ),
                     ],

@@ -44,7 +44,7 @@ class UserProfileScreen extends StatelessWidget {
                       ),
               child: Hero(
                 tag: 'avatar_$uid',
-                child: Avatar(name: u.username, photo: u.photo, size: 120, online: u.isOnline),
+                child: Avatar(name: u.username, photo: u.photo, size: 120, online: app.onlineVisible(u)),
               ),
             ),
           ),
@@ -55,8 +55,8 @@ class UserProfileScreen extends StatelessWidget {
           const SizedBox(height: 4),
           Center(
             child: Text(
-              u.statusText,
-              style: TextStyle(color: u.isOnline ? QColors.online : theme.hintColor),
+              app.presenceText(u),
+              style: TextStyle(color: app.onlineVisible(u) ? QColors.online : theme.hintColor),
             ),
           ),
           const SizedBox(height: 20),
