@@ -484,6 +484,13 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       notifyListeners();
     }));
 
+    _subs.add(db.ref('users/$uid/blocked').onValue.listen((e) {
+      blocked
+        ..clear()
+        ..addAll(asMap(e.snapshot.value).keys);
+      notifyListeners();
+    }, onError: (_) {}));
+
     _subs.add(db.ref('users/$uid/clearedChats').onValue.listen((e) {
       _cleared
         ..clear()
@@ -616,6 +623,32 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// "çevrimiçi" / "son görülme ..." yazısı (tanımadığın kişilerde boş).
   String presenceText(AppUser? u) => (u == null || !isContact(u.uid)) ? '' : u.statusText;
 
+  // ---------- Engelleme ----------
+  /// Engellediğim kişiler: mesaj atamaz, arayamaz, bildirimleri gelmez.
+  final Set<String> blocked = {};
+
+  bool isBlocked(String other) => blocked.contains(other);
+
+  Future<void> setBlocked(String other, bool block) async {
+    final uid = _uid;
+    if (uid == null || other == uid) return;
+    block ? blocked.add(other) : blocked.remove(other);
+    notifyListeners();
+    final r = db.ref('users/$uid/blocked/$other');
+    await (block ? r.set(true) : r.remove()).catchError((_) {});
+  }
+
+  /// Karşı taraf beni engellemiş mi?
+  Future<bool> hasBlockedMe(String other) async {
+    final uid = _uid;
+    if (uid == null) return false;
+    try {
+      return (await db.ref('users/$other/blocked/$uid').get()).exists;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ---------- Sohbeti temizle (sadece kendin için) ----------
   /// sohbet anahtarı -> temizlendiği andaki son mesajın kimliği (o ve öncesi gizlenir)
   final Map<String, String> _cleared = {};
@@ -683,7 +716,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _notifyIncoming(String key, String chatId, bool isDm, ChatMessage msg) {
-    if (!notificationsEnabled || _muted.contains(key)) return;
+    if (!notificationsEnabled || _muted.contains(key) || isBlocked(msg.senderUid)) return;
     final title = isDm ? msg.sender : (rooms[chatId]?.name ?? 'Oda');
     final body = isDm ? msg.previewText : '${msg.sender}: ${msg.previewText}';
     NotificationService.showMessage(

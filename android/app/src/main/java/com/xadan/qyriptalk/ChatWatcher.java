@@ -87,6 +87,10 @@ final class ChatWatcher {
     private Reg callReg;
     private DatabaseReference joinedRef;
     private ValueEventListener joinedListener;
+    /** Engellediğim kişiler: onlardan arama / mesaj bildirimi gösterilmez. */
+    private final java.util.Set<String> blocked = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    private DatabaseReference blockedRef;
+    private ValueEventListener blockedListener;
     private final Map<String, Reg> convRegs = new HashMap<>();
     private final Map<String, String> roomNames = new HashMap<>();
     private final Set<String> notifiedKeys = new HashSet<>();
@@ -136,14 +140,42 @@ final class ChatWatcher {
         }
         started = true;
         dmScanned = false;
+        watchBlocked();
         watchCalls();
         watchRooms();
         scanDms();
         handler.postDelayed(rescan, RESCAN_MS);
     }
 
+    private void watchBlocked() {
+        blockedRef = db.getReference("users").child(uid).child("blocked");
+        blockedListener = new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot s) {
+                blocked.clear();
+                for (DataSnapshot c : s.getChildren()) {
+                    if (c.getKey() != null) blocked.add(c.getKey());
+                }
+            }
+
+            @Override
+            public void onCancelled(DatabaseError e) {
+            }
+        };
+        blockedRef.addValueEventListener(blockedListener);
+    }
+
     private void doStop() {
         started = false;
+        if (blockedRef != null && blockedListener != null) {
+            try {
+                blockedRef.removeEventListener(blockedListener);
+            } catch (Exception ignored) {
+            }
+        }
+        blockedRef = null;
+        blockedListener = null;
+        blocked.clear();
         handler.removeCallbacks(rescan);
         if (callReg != null) {
             callReg.remove();
@@ -191,7 +223,9 @@ final class ChatWatcher {
                     final String callerName = snap.child("callerName").getValue(String.class);
                     final String type = snap.child("type").getValue(String.class);
                     final String title = snap.child("title").getValue(String.class);
+                    final String callerId = snap.child("callerId").getValue(String.class);
                     if (callId == null) return;
+                    if (callerId != null && blocked.contains(callerId)) return;
                     db.getReference("calls").child(callId).child("status")
                             .addListenerForSingleValueEvent(new ValueEventListener() {
                                 @Override
@@ -400,6 +434,7 @@ final class ChatWatcher {
             String senderUid = s.child("senderUid").getValue(String.class);
             String senderName = s.child("sender").getValue(String.class);
             if (uid == null || uid.equals(senderUid)) return;
+            if (senderUid != null && blocked.contains(senderUid)) return;
             // eski mesajlarda senderUid olmayabilir: kendi adımızla gönderilmişse bildirim yok
             if (senderUid == null && username != null && !username.isEmpty() && username.equals(senderName)) return;
 

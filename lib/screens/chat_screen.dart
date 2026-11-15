@@ -100,7 +100,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (!_isDm && !app.rooms.containsKey(widget.chatId)) app.refreshRoom(widget.chatId);
     _loadOffline();
     _subscribe();
+    if (_isDm) {
+      app.hasBlockedMe(_otherUid).then((v) {
+        if (mounted && v) setState(() => _blockedMe = true);
+      });
+    }
   }
+
+  bool _blockedMe = false;
+  String get _otherUid => _isDm ? otherUidFromDm(widget.chatId, _myUid) : '';
 
   // ---------- Çevrimdışı kopya: internet yokken de son mesajlar görünsün ----------
 
@@ -916,6 +924,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  Future<void> _toggleBlock() async {
+    final blocked = app.isBlocked(_otherUid);
+    final ok = await confirmDialog(context,
+        title: blocked ? 'Engeli kaldır' : 'Engelle',
+        message: blocked
+            ? 'Bu kişi sana tekrar mesaj gönderebilecek ve seni arayabilecek.'
+            : 'Bu kişi sana mesaj gönderemeyecek ve seni arayamayacak. Engellediğini ona bildirmeyiz.',
+        confirmText: blocked ? 'Kaldır' : 'Engelle',
+        destructive: !blocked);
+    if (ok) await app.setBlocked(_otherUid, !blocked);
+  }
+
   /// Mesajları SADECE bu kullanıcı için siler (karşı taraf / oda üyeleri etkilenmez).
   Future<void> _clearChat() async {
     if (_msgs.isEmpty) {
@@ -1127,6 +1147,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             case 'clear':
                               _clearChat();
                               break;
+                            case 'block':
+                              _toggleBlock();
+                              break;
                           }
                         },
                         itemBuilder: (_) => [
@@ -1137,6 +1160,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                               value: 'mute',
                               child: Text(app.isMuted(ref.key) ? 'Bildirimleri aç' : 'Sessize al')),
                           const PopupMenuItem(value: 'clear', child: Text('Sohbeti temizle')),
+                          if (_isDm)
+                            PopupMenuItem(
+                                value: 'block',
+                                child: Text(app.isBlocked(_otherUid) ? 'Engeli kaldır' : 'Engelle')),
                         ],
                       ),
                     ],
@@ -1326,6 +1353,27 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         icon: const Icon(Icons.login_rounded),
                         label: const Text('Odaya katıl'),
                       ),
+                    ),
+                  ),
+                )
+              else if (!_searching && !selecting && _isDm && (appW.isBlocked(_otherUid) || _blockedMe))
+                Material(
+                  color: theme.colorScheme.surface,
+                  child: SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        Text(
+                          appW.isBlocked(_otherUid) ? 'Bu kişiyi engelledin.' : 'Bu kişiye mesaj gönderemezsin.',
+                          style: TextStyle(color: theme.hintColor),
+                        ),
+                        if (appW.isBlocked(_otherUid))
+                          TextButton(
+                            onPressed: () => app.setBlocked(_otherUid, false),
+                            child: const Text('Engeli kaldır'),
+                          ),
+                      ]),
                     ),
                   ),
                 )

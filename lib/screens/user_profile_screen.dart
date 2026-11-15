@@ -119,6 +119,26 @@ class UserProfileScreen extends StatelessWidget {
               title: const Text('Rol'),
               subtitle: Text(u.role == 'admin' ? 'Yönetici' : 'Moderatör'),
             ),
+          if (uid != me)
+            ListTile(
+              leading: const Icon(Icons.block_rounded, color: QColors.danger),
+              title: Text(app.isBlocked(uid) ? 'Engeli kaldır' : 'Engelle',
+                  style: const TextStyle(color: QColors.danger)),
+              subtitle: Text(app.isBlocked(uid)
+                  ? 'Sana tekrar mesaj gönderebilir ve arayabilir'
+                  : 'Sana mesaj gönderemez ve arayamaz'),
+              onTap: () async {
+                final blocked = app.isBlocked(uid);
+                final ok = await confirmDialog(context,
+                    title: blocked ? 'Engeli kaldır' : '${u.username} engellensin mi?',
+                    message: blocked
+                        ? '${u.username} sana tekrar mesaj gönderebilecek ve seni arayabilecek.'
+                        : '${u.username} sana mesaj gönderemeyecek ve seni arayamayacak. Engellediğini ona bildirmeyiz.',
+                    confirmText: blocked ? 'Kaldır' : 'Engelle',
+                    destructive: !blocked);
+                if (ok) await app.setBlocked(uid, !blocked);
+              },
+            ),
         ],
       ),
     );

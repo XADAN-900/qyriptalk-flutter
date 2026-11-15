@@ -156,6 +156,13 @@ class CallService extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
     if (phase != CallPhase.idle) return; // meşgul: davet kalır, karşı taraf zaman aşımına düşer
+    // Engellediğim kişiden gelen arama: hiç çalmadan reddet.
+    final caller = asStr(inv['callerId']);
+    if (caller.isNotEmpty && app.isBlocked(caller)) {
+      await db.ref('callInvites/$uid/$id').remove();
+      await db.ref('calls/$id/participants/$uid').set({'username': app.username, 'status': 'declined'});
+      return;
+    }
 
     callId = id;
     callType = asStr(inv['type'], 'dm');
@@ -201,6 +208,8 @@ class CallService extends ChangeNotifier with WidgetsBindingObserver {
     if (isDm) {
       final other = otherUidFromDm(chatId, uid);
       if (other.isEmpty) return 'Kullanıcı bulunamadı.';
+      if (app.isBlocked(other)) return 'Bu kişiyi engelledin.';
+      if (await app.hasBlockedMe(other)) return 'Bu kişiyi arayamazsın.';
       targets = [other];
     } else {
       final s = await db.ref('rooms/$chatId/users').get();
