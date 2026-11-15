@@ -291,8 +291,8 @@ class _ChatsTabState extends State<ChatsTab> {
                   },
                 ),
               ),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
+            // Filtreler ekrana tam sığar (kaydırma gerekmez; büyük yazıda yazı küçülür).
+            Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               child: Row(
                 children: [
@@ -302,13 +302,14 @@ class _ChatsTabState extends State<ChatsTab> {
                     (2, 'Kişiler'),
                     (3, 'Odalar'),
                   ])
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: ChoiceChip(
-                        label: Text(label),
-                        selected: _filter == i,
-                        onSelected: (_) => setState(() => _filter = i),
-                        showCheckmark: false,
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 3),
+                        child: _FilterChip(
+                          label: label,
+                          selected: _filter == i,
+                          onTap: () => setState(() => _filter = i),
+                        ),
                       ),
                     ),
                 ],
@@ -559,6 +560,51 @@ class ArchivedChatsScreen extends StatelessWidget {
       body: chats.isEmpty
           ? const Center(child: Text('Arşivde sohbet yok'))
           : ListView(children: [for (final c in chats) ChatTile(chat: c)]),
+    );
+  }
+}
+
+
+/// Sohbet filtresi düğmesi: dört tanesi ekrana eşit genişlikte sığar.
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _FilterChip({required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: selected ? cs.secondaryContainer : Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: selected ? Colors.transparent : cs.outlineVariant),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          height: 38,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: selected ? cs.onSecondaryContainer : cs.onSurface,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
