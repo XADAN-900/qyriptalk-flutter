@@ -249,9 +249,9 @@ const db = (k = S.cur) => FB[k].db;
 const val = async (path, k = S.cur) => (await db(k).ref(path).get()).val();
 
 async function shallow(path, k = S.cur) {
-  const user = FB[k].auth.currentUser; if (!user) return [];
-  const token = await user.getIdToken();
-  const r = await fetch(`${CFG[k].fb.databaseURL}/${path}.json?shallow=true&auth=${token}`);
+  const user = FB[k].auth.currentUser;
+  const token = user ? await user.getIdToken() : null;
+  const r = await fetch(`${CFG[k].fb.databaseURL}/${path}.json?shallow=true${token ? '&auth=' + token : ''}`);
   if (!r.ok) return [];
   const j = await r.json();
   return j && typeof j === 'object' ? Object.keys(j) : [];
@@ -329,6 +329,10 @@ $('#pForm').onsubmit = async (e) => {
     try { await panelSignIn(k, email, pass); S.sess[k] = { authUid: FB[k].auth.currentUser.uid, name: user }; }
     catch (x) { S.errs[k] = x.message || String(x); }
   }));
+  // Tek ad + tek şifre: bir projede doğrulandıysa diğeri de açılır
+  // (o projede Firebase giriş sistemi kapalı olsa bile veritabanına doğrudan bağlanır).
+  if (S.sess.fq && !S.sess.qt && !/Şifre hatalı/.test(S.errs.qt || '')) { S.sess.qt = { authUid: '', name: user, direct: true }; delete S.errs.qt; }
+  if (S.sess.qt && !S.sess.fq && !/Şifre hatalı/.test(S.errs.fq || '')) { S.sess.fq = { authUid: '', name: user, direct: true }; delete S.errs.fq; }
   if (!S.sess.qt && !S.sess.fq) {
     m.className = 'msg err';
     m.textContent = S.errs.qt === S.errs.fq ? S.errs.qt : Object.entries(S.errs).map(([k, v]) => `${CFG[k].name}: ${v}`).join(' · ');
@@ -364,7 +368,13 @@ for (const k of ['qt', 'fq']) {
       S.sess[k] = { authUid: u.uid, name: u.email.split('@')[0] };
       startLive(k);
     }
-    if (++restored === 2 && (S.sess.qt || S.sess.fq) && !S.entered) showPick();
+    if (++restored === 2) {
+      for (const x of ['qt', 'fq']) {
+        const o = x === 'qt' ? 'fq' : 'qt';
+        if (!S.sess[x] && S.sess[o]) { S.sess[x] = { authUid: '', name: S.sess[o].name, direct: true }; startLive(x); }
+      }
+      if ((S.sess.qt || S.sess.fq) && !S.entered) showPick();
+    }
   });
 }
 
@@ -488,7 +498,7 @@ function renderWho() {
     if (!pw) return;
     if (pw.length < 8) { toast('En az 8 karakter olmalı.', 'err'); return; }
     await act(async () => {
-      for (const k of ['qt', 'fq'].filter((x) => S.sess[x])) {
+      for (const k of ['qt', 'fq'].filter((x) => S.sess[x] && FB[x].auth.currentUser)) {
         const u = FB[k].auth.currentUser;
         await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email, cur));
         await u.updatePassword(pw);
