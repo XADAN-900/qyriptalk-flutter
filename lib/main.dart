@@ -186,10 +186,7 @@ class _Gate extends StatelessWidget {
     if (app.restoring) {
       return Scaffold(
         body: Center(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            child: Image.asset('assets/logo.png', width: 110, height: 110),
-          ),
+          child: Image.asset('assets/logo_splash.png', width: 120, height: 120),
         ),
       );
     }
