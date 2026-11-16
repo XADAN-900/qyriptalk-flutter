@@ -63,7 +63,7 @@ jobs:
           APP_KEY_PASSWORD: ${{ secrets.QT_KEY_PASSWORD || secrets.QT_KEYSTORE_PASSWORD }}
           ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
         run: |
-          flutter build apk --release --dart-define=FIREBASE_ANDROID_APP_ID="$ANDROID_APP_ID" --dart-define=APP_BUILD=${{ github.run_number }}
+          flutter build apk --release --build-number=${{ github.run_number }} --dart-define=FIREBASE_ANDROID_APP_ID="$ANDROID_APP_ID" --dart-define=APP_BUILD=${{ github.run_number }}
           cp build/app/outputs/flutter-apk/app-release.apk "$APP_NAME.apk"
           VN=$(grep -E '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*([^+]+).*/\1/')
           echo "VERSION_NAME=$VN" >> "$GITHUB_ENV"
