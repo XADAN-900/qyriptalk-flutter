@@ -366,7 +366,11 @@ async function logoutAll() {
 // Sayfa yenilenince oturum hatırlanır.
 let restored = 0;
 for (const k of ['qt', 'fq']) {
-  FB[k].auth.onAuthStateChanged((u) => {
+  FB[k].auth.onAuthStateChanged((user) => {
+    let u = user;
+    // Oturum sadece bu tarayıcı oturumunda giriş yapıldıysa sürer; yoksa giriş ekranı gelir
+    // (girişte yazılan şifre, şifre değiştirme kilidini de sormadan açar).
+    if (u && !S.pass) { FB[k].auth.signOut().catch(() => {}); u = null; }
     if (u && !S.sess[k] && (u.email || '').endsWith(PANEL_DOMAIN)) {
       S.sess[k] = { authUid: u.uid, name: u.email.split('@')[0] };
       startLive(k);
