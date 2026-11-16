@@ -184,7 +184,14 @@ class _Gate extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     if (app.restoring) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        body: Center(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: Image.asset('assets/logo.png', width: 110, height: 110),
+          ),
+        ),
+      );
     }
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 350),
