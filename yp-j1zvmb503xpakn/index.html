@@ -127,15 +127,18 @@ pre.crash{white-space:pre-wrap;word-break:break-word;background:#07080d;border:1
 </head>
 <body>
 
+<!-- ======================= AÇILIŞ BEKLEME ======================= -->
+<div id="splash" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);z-index:60"><span class="spin"></span></div>
+
 <!-- ======================= GİRİŞ ======================= -->
-<div id="login">
+<div id="login" class="hidden">
   <div class="login-box" style="width:min(460px,100%)">
     <div class="brand"><span>XADAN</span> Yönetim Paneli</div>
     <div class="muted">Qyriptalk ve FlinQ için tek giriş.</div>
     <div class="card" style="margin-top:22px" id="loginCard">
       <form id="pForm">
-        <div class="field"><label>Kullanıcı adı</label><input id="pUser" autocomplete="username" value=""></div>
-        <div class="field"><label>Şifre</label><input id="pPass" type="password" autocomplete="current-password"></div>
+        <div class="field"><label>Kullanıcı adı</label><input id="pUser" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value=""></div>
+        <div class="field"><label>Şifre</label><input id="pPass" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="-webkit-text-security:disc;text-security:disc"></div>
         <button class="btn primary" type="submit" style="width:100%;justify-content:center;background:linear-gradient(90deg,var(--qt),var(--fq))">Giriş yap</button>
         <div class="msg" id="pMsg"></div>
       </form>
@@ -387,6 +390,17 @@ async function logoutAll() {
   location.reload();
 }
 
+// Açılış: kayıtlı oturum yoksa doğrudan giriş ekranı; varsa oturum çözülene kadar bekleme ekranı.
+(function () {
+  if (S.pass) return; // oturum var: splash kalsın, auth çözülünce panele girilecek
+  $('#splash').classList.add('hidden');
+  $('#login').classList.remove('hidden');
+})();
+function revealLogin() {
+  $('#splash').classList.add('hidden');
+  if (!S.entered) $('#login').classList.remove('hidden');
+}
+
 // Sayfa yenilenince oturum hatırlanır.
 let restored = 0;
 for (const k of ['qt', 'fq']) {
@@ -405,13 +419,22 @@ for (const k of ['qt', 'fq']) {
         const o = x === 'qt' ? 'fq' : 'qt';
         if (!S.sess[x] && S.sess[o]) { S.sess[x] = { authUid: '', name: S.sess[o].name, direct: true }; startLive(x); }
       }
-      if ((S.sess.qt || S.sess.fq) && !S.entered) showPick();
+      if ((S.sess.qt || S.sess.fq) && !S.entered) {
+        // Yenilemede doğrudan son bakılan uygulamaya gir (giriş ekranı parlamasın).
+        let last; try { last = sessionStorage.getItem('xadan_app'); } catch (_) {}
+        const go = (last && S.sess[last]) ? last : (S.sess.qt ? 'qt' : 'fq');
+        enterPanel(go);
+      }
+      revealLogin();
     }
   });
+  // Güvenlik: auth 4 sn içinde çözülmezse bekleme ekranını kaldır.
+  setTimeout(revealLogin, 4000);
 }
 
 function enterPanel(k) {
   S.entered = true;
+  $('#splash').classList.add('hidden');
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
   switchApp(k);
 }
@@ -506,6 +529,7 @@ const NAV = {
 function switchApp(k) {
   if (!S.sess[k]) { toast(`${CFG[k].name}: ${S.errs[k] || 'giriş yapılamadı'}`, 'err'); return; }
   S.cur = k;
+  try { sessionStorage.setItem('xadan_app', k); } catch (_) {}
   document.documentElement.style.setProperty('--accent', CFG[k].color);
   $('#swQt').classList.toggle('on', k === 'qt'); $('#swFq').classList.toggle('on', k === 'fq');
   $('#swQt').disabled = !S.sess.qt; $('#swFq').disabled = !S.sess.fq;
