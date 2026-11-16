@@ -70,6 +70,7 @@
       }
     },
     "privateMessages": {
+      ".read": "auth != null && (auth.token.email === 'admin@panel.xadan.app' || root.child('admins').child(auth.uid).exists() || root.child('users').child(root.child('authMap').child(auth.uid).val() + '').child('role').val() === 'admin')",
       "$dm": {
         ".read": "auth != null && ($dm.beginsWith(root.child('authMap').child(auth.uid).val() + '_') || $dm.endsWith('_' + root.child('authMap').child(auth.uid).val()))",
         ".write": "(auth != null && ($dm.beginsWith(root.child('authMap').child(auth.uid).val() + '_') || $dm.endsWith('_' + root.child('authMap').child(auth.uid).val())) && !root.child('users').child(($dm.beginsWith(root.child('authMap').child(auth.uid).val() + '_') ? $dm.replace(root.child('authMap').child(auth.uid).val() + '_', '') : $dm.replace('_' + root.child('authMap').child(auth.uid).val(), ''))).child('blocked').child(root.child('authMap').child(auth.uid).val() + '').exists()) || (auth != null && (auth.token.email === 'admin@panel.xadan.app' || root.child('admins').child(auth.uid).exists() || root.child('users').child(root.child('authMap').child(auth.uid).val() + '').child('role').val() === 'admin'))"
