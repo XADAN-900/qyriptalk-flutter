@@ -401,7 +401,7 @@ function startLive(k) {
   if (k === 'fq') on('stories', 'stories');
   const conn = d.ref('.info/connected');
   conn.on('value', (s) => { st.online = s.val() === true; if (S.cur === k) liveBadge(); });
-  poll(k); st.timer = setInterval(() => poll(k), 15000);
+  poll(k); st.timer = setInterval(() => poll(k), 10000);
 }
 
 /** İçeriği indirmeden sayım: oda mesajları ve gönderi anahtarları (15 sn'de bir). */
@@ -424,9 +424,8 @@ async function poll(k) {
       changed(k, 'rooms');
     } else {
       const keys = (await shallow('posts', k)).sort().reverse();
-      const before = st.posts.join(',');
       st.posts = keys;
-      if (keys.join(',') !== before) changed(k, 'posts');
+      changed(k, 'posts'); // beğeni / yorum sayıları da tazelenir
     }
   } catch (_) {}
 }
@@ -466,9 +465,9 @@ function usersOf(k = S.cur) {
 // =====================================================================
 const NAV = {
   qt: [['overview', '📊', 'Genel bakış'], ['users', '👥', 'Kullanıcılar'], ['rooms', '💬', 'Odalar'],
-       ['announce', '📣', 'Duyurular'], ['crashes', '🐞', 'Çökme raporları'], ['releases', '📦', 'Sürümler']],
+       ['announce', '📣', 'Duyurular'], ['crashes', '🐞', 'Çökme raporları'], ['export', '💾', 'Verileri indir'], ['releases', '📦', 'Sürümler']],
   fq: [['overview', '📊', 'Genel bakış'], ['users', '👥', 'Kullanıcılar'], ['posts', '🖼️', 'Gönderiler'], ['stories', '⭕', 'Hikayeler'],
-       ['announce', '📣', 'Duyurular'], ['crashes', '🐞', 'Çökme raporları'], ['releases', '📦', 'Sürümler']],
+       ['announce', '📣', 'Duyurular'], ['crashes', '🐞', 'Çökme raporları'], ['export', '💾', 'Verileri indir'], ['releases', '📦', 'Sürümler']],
 };
 function switchApp(k) {
   if (!S.sess[k]) { toast(`${CFG[k].name}: ${S.errs[k] || 'giriş yapılamadı'}`, 'err'); return; }
@@ -570,9 +569,7 @@ VIEWS.overview = {
     if (k === 'qt') {
       let total = 0;
       Object.values(st.rooms).forEach((r) => { total += r.msgs.length; r.msgs.forEach((m) => { const d = dayKey(pushTime(m)); if (d in act14) act14[d]++; }); });
-      const legacy = users.filter((u) => u.legacy).length;
-      stats.push([Object.keys(st.rooms).length, 'Oda', ''], [total, 'Oda mesajı', ''],
-        [users.length - legacy, 'Güvenli girişte', legacy ? `<span class="pill bad">${legacy} eski hesap</span>` : '<span class="pill on">hepsi</span>']);
+      stats.push([Object.keys(st.rooms).length, 'Oda', ''], [total, 'Oda mesajı', '']);
       $('#c1t').textContent = 'Oda mesajları (son 14 gün)';
     } else {
       st.posts.forEach((p) => { const d = dayKey(pushTime(p)); if (d in act14) act14[d]++; });
@@ -600,7 +597,7 @@ VIEWS.users = {
     el.innerHTML = `<div class="toolbar">
         <input id="uq" placeholder="İsim, e-posta ya da kimlik ara…">
         <select id="uf"><option value="">Hepsi</option><option value="online">Çevrimiçi</option><option value="banned">Askıda</option><option value="admin">Yönetici</option>
-          ${k === 'qt' ? '<option value="legacy">Eski hesap</option>' : '<option value="verified">Mavi tikli</option>'}</select>
+          ${k === 'qt' ? '' : '<option value="verified">Mavi tikli</option>'}</select>
         <span class="muted" id="ucount"></span></div>
       <div class="tbl"><table><thead><tr><th>Kullanıcı</th><th>Durum</th><th>${k === 'qt' ? 'Kayıt' : 'E-posta'}</th><th>Son görülme</th><th>Etiketler</th></tr></thead><tbody id="ub"><tr><td colspan="5">${LOADING}</td></tr></tbody></table></div>`;
     $('#uq').oninput = () => this.update(); $('#uf').onchange = () => this.update();
@@ -618,7 +615,7 @@ VIEWS.users = {
       <td>${u.online ? '<span class="pill on">çevrimiçi</span>' : '<span class="pill gray">çevrimdışı</span>'}</td>
       <td class="muted">${k === 'qt' ? fmt(u.created) : esc(u.email)}</td>
       <td class="muted">${u.online ? 'şimdi' : ago(u.lastSeen)}</td>
-      <td>${u.admin ? '<span class="pill adm">yönetici</span>' : ''}${u.verified ? '<span class="pill ver">mavi tik</span>' : ''}${u.banned ? '<span class="pill bad">askıda</span>' : ''}${u.legacy ? '<span class="pill bad">eski hesap</span>' : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">Kimse yok</td></tr>');
+      <td>${u.admin ? '<span class="pill adm">yönetici</span>' : ''}${u.verified ? '<span class="pill ver">mavi tik</span>' : ''}${u.banned ? '<span class="pill bad">askıda</span>' : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">Kimse yok</td></tr>');
     if (S.openUser) S.openUser();
   },
 };
@@ -638,7 +635,7 @@ function userDetail(uid) {
         <div>Durum</div><div>${u.online ? '<span class="pill on">çevrimiçi</span>' : 'Son görülme: ' + fmt(u.lastSeen)}</div>
         <div>Kayıt</div><div>${fmt(u.created)}</div>
         <div>Rol</div><div>${u.admin ? 'Yönetici' : 'Kullanıcı'}</div>
-        ${k === 'qt' ? `<div>Giriş</div><div>${u.legacy ? '<span class="pill bad">Eski hesap</span>' : '<span class="pill on">Güvenli</span>'}</div>` : `<div>Mavi tik</div><div>${u.verified ? 'Var' : 'Yok'}</div>`}
+        ${k === 'fq' ? `<div>Mavi tik</div><div>${u.verified ? 'Var' : 'Yok'}</div>` : ''}
         ${u.banned ? `<div>Askıda</div><div style="color:#ff8a8a">${esc(u.banReason || 'Sebep belirtilmedi')}</div>` : ''}
       </div>
       <div class="row wrap">
@@ -649,7 +646,7 @@ function userDetail(uid) {
         <button class="btn ${u.banned ? 'ok' : 'danger'}" data-a="ban">${u.banned ? 'Askıyı kaldır' : '⛔ Askıya al'}</button>
         <button class="btn danger" data-a="del">🗑️ Hesabı sil</button>
       </div>
-      ${k === 'fq' ? '<div class="muted" style="font-size:12px;margin-top:14px">FlinQ hesapları gerçek e-postayla açıldığı için şifrelerini sunucu olmadan değiştirmek teknik olarak mümkün değil.</div>' : ''}`);
+      `);
     $('#udb', o).querySelectorAll('[data-a]').forEach((b) => b.onclick = async () => {
       const a = b.dataset.a;
       if (a === 'rename') await renameUser(k, u);
@@ -689,25 +686,32 @@ async function renameUser(k, u) {
 }
 
 async function setQtPassword(u) {
-  if (u.legacy) { toast('Bu hesap henüz güvenli girişe geçmedi; kullanıcı bir kez yeni uygulamayla girmeli ya da uygulamadaki toplu taşıma yapılmalı.', 'err'); return false; }
-  const pw = await ask('Yeni şifre belirle', `${esc(u.name)} bundan sonra bu şifreyle girecek. Telefonda açık oturumu varsa tekrar girmesi gerekir.`, { input: 'En az 6 karakter', ok: 'Şifreyi değiştir' });
+  const pw = await ask('Yeni şifre belirle', `${esc(u.name)} bundan sonra bu şifreyle girecek.`, { input: 'Yeni şifre', ok: 'Şifreyi değiştir' });
   if (!pw) return false;
-  if (pw.length < 6) { toast('Şifre en az 6 karakter olmalı.', 'err'); return false; }
+  if (pw.length < 4) { toast('Şifre en az 4 karakter olmalı.', 'err'); return false; }
   return act(async () => {
-    const cur = (await val(`authV/${u.uid}`, 'qt')) || '';
-    const ver = 'r' + ((cur.startsWith('r') ? (+cur.slice(1) || 0) : 0) + 1);
-    await db('qt').ref(`authV/${u.uid}`).set(ver);
-    let tmp;
-    try { tmp = firebase.app('qtReset'); } catch (_) { tmp = firebase.initializeApp(CFG.qt.fb, 'qtReset'); }
-    const cred = await tmp.auth().createUserWithEmailAndPassword(qtEmail(u.uid, ver), qtPass(pw));
-    await tmp.database().ref(`authMap/${cred.user.uid}`).set(u.uid);
-    await tmp.auth().signOut();
-    const up = { [`users/${u.uid}/authUid`]: cred.user.uid, [`users/${u.uid}/password`]: null };
-    if (u.authUid) {
-      up[`authMap/${u.authUid}`] = null;
-      if (L.qt.admins[u.authUid]) { up[`admins/${u.authUid}`] = null; up[`admins/${cred.user.uid}`] = true; }
+    // Hesap güvenli girişe (Firebase Auth) geçtiyse yeni giriş sürümü oluşturulur.
+    if (!u.legacy && u.authUid) {
+      const cur = (await val(`authV/${u.uid}`, 'qt')) || '';
+      const ver = 'r' + ((cur.startsWith('r') ? (+cur.slice(1) || 0) : 0) + 1);
+      let tmp;
+      try { tmp = firebase.app('qtReset'); } catch (_) { tmp = firebase.initializeApp(CFG.qt.fb, 'qtReset'); }
+      try {
+        await db('qt').ref(`authV/${u.uid}`).set(ver);
+        const cred = await tmp.auth().createUserWithEmailAndPassword(qtEmail(u.uid, ver), qtPass(pw));
+        await tmp.database().ref(`authMap/${cred.user.uid}`).set(u.uid);
+        await tmp.auth().signOut();
+        const up = { [`users/${u.uid}/authUid`]: cred.user.uid, [`users/${u.uid}/password`]: null, [`authMap/${u.authUid}`]: null };
+        if (L.qt.admins[u.authUid]) { up[`admins/${u.authUid}`] = null; up[`admins/${cred.user.uid}`] = true; }
+        await db('qt').ref().update(up);
+        return;
+      } catch (x) {
+        await db('qt').ref(`authV/${u.uid}`).set(cur || null).catch(() => {});
+        if (!authOff(x)) throw x;
+      }
     }
-    await db('qt').ref().update(up);
+    // Eski yöntem (Firebase giriş sistemi kapalıyken uygulama bu şifreyle girer).
+    await db('qt').ref(`users/${u.uid}/password`).set(pw);
   }, 'Şifre değiştirildi ✅');
 }
 
@@ -770,7 +774,7 @@ VIEWS.rooms = {
     const q = $('#rq').value.trim().toLowerCase();
     const rooms = Object.entries(st.rooms).map(([id, r]) => ({ id, ...(st.roomMeta[id] || {}), msgs: r.msgs.length, members: r.members, last: r.msgs.map(pushTime).reduce((a, b) => Math.max(a, b), 0) }))
       .filter((r) => !q || String(r.name).toLowerCase().includes(q)).sort((a, b) => b.last - a.last);
-    $('#rc').textContent = `${rooms.length} oda · 15 sn'de bir güncellenir`;
+    $('#rc').textContent = `${rooms.length} oda`;
     patch($('#rb'), rooms.map((r) => `<tr>
       <td><b>${esc(r.name)}</b> ${r.isPrivate ? '<span class="pill gray">gizli</span>' : ''}<div class="muted" style="font-size:12px">${esc(String(r.desc || '').slice(0, 70))}</div></td>
       <td>${r.members}</td><td>${r.msgs}</td><td class="muted">${ago(r.last)}</td><td class="muted">${esc(names[r.createdBy] || '—')}</td>
@@ -967,6 +971,62 @@ VIEWS.crashes = {
       <button class="btn sm" data-o="${esc(r.id)}">${this.open.has(r.id) ? 'Kapat' : 'Aç'}</button><button class="btn sm danger" data-d="${esc(r.id)}">Sil</button></div>
       <div class="muted" style="font-size:12.5px;margin-top:6px">${esc(first(r))}</div>
       ${this.open.has(r.id) ? `<pre class="crash">${esc(r.report)}</pre>` : ''}</div>`).join('') || '<div class="empty">Çökme raporu yok 🎉</div>');
+  },
+};
+
+// ---------------- Verileri indir ----------------
+function download(name, text, type = 'application/json') {
+  const blob = new Blob([text], { type: type + ';charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+const stamp = () => { const d = new Date(); return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`; };
+/** Dışa aktarımda şifre alanları asla yer almaz. */
+function scrub(users) { const o = {}; Object.entries(users || {}).forEach(([k, v]) => { const c = { ...(v || {}) }; delete c.password; o[k] = c; }); return o; }
+async function restJson(path, k = S.cur) {
+  const user = FB[k].auth.currentUser; const token = user ? await user.getIdToken() : null;
+  const r = await fetch(`${CFG[k].fb.databaseURL}/${path}.json${token ? '?auth=' + token : ''}`);
+  if (!r.ok) throw new Error('İndirilemedi (HTTP ' + r.status + ')');
+  return r.json();
+}
+VIEWS.export = {
+  mount(el) {
+    const k = S.cur, n = CFG[k].name.toLowerCase();
+    const items = [
+      ['users_csv', '👥 Kullanıcılar (Excel / CSV)', 'Ad, e-posta, durum, son görülme, kayıt, askı, yönetici bilgileri'],
+      ['users_json', '👥 Kullanıcılar (JSON)', 'Profil verilerinin tamamı (fotoğraflar dahil)'],
+      ...(k === 'qt'
+        ? [['rooms', '💬 Odalar ve tüm oda mesajları (JSON)', 'Oda bilgileri, üyeler ve mesajlar']]
+        : [['posts', '🖼️ Gönderiler (JSON)', 'Tüm gönderiler, beğeniler, yorumlar (fotoğraf/video dahil)'], ['stories', '⭕ Hikayeler (JSON)', 'Aktif hikayeler']]),
+      ['crashes', '🐞 Çökme raporları (JSON)', ''],
+      ['ann', '📣 Duyurular (JSON)', ''],
+      ['all', '🗄️ Tam yedek (JSON)', 'Veritabanının tamamı. Büyük olabilir, inmesi biraz sürebilir.'],
+    ];
+    el.innerHTML = `<div class="note">İndirilen dosyalarda kullanıcı şifreleri yer almaz.</div>
+      <div class="tbl" style="max-height:none"><table><tbody>${items.map(([id, t, d]) => `<tr><td><b>${t}</b><div class="muted" style="font-size:12.5px">${d}</div></td><td style="text-align:right"><button class="btn primary sm" data-x="${id}">İndir</button></td></tr>`).join('')}</tbody></table></div>`;
+    el.querySelectorAll('[data-x]').forEach((b) => b.onclick = async () => {
+      const id = b.dataset.x, old = b.textContent; b.disabled = true; b.innerHTML = '<span class="spin" style="width:14px;height:14px;border-width:2px"></span>';
+      try {
+        const st = L[k];
+        if (id === 'users_csv') {
+          const rows = [['kimlik', 'kullanici_adi', 'e_posta', 'hakkinda', 'cevrimici', 'son_gorulme', 'kayit', 'askida', 'yonetici', 'mavi_tik']];
+          (usersOf(k) || []).forEach((u) => rows.push([u.uid, u.name, u.email, u.bio, u.online ? 'evet' : 'hayir', fmt(u.lastSeen), fmt(u.created), u.banned ? 'evet' : 'hayir', u.admin ? 'evet' : 'hayir', u.verified ? 'evet' : 'hayir']));
+          download(`${n}-kullanicilar-${stamp()}.csv`, '\ufeff' + rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n'), 'text/csv');
+        } else if (id === 'users_json') download(`${n}-kullanicilar-${stamp()}.json`, JSON.stringify(scrub(st.users), null, 2));
+        else if (id === 'rooms') download(`${n}-odalar-${stamp()}.json`, JSON.stringify(await restJson('rooms', k), null, 2));
+        else if (id === 'posts') download(`${n}-gonderiler-${stamp()}.json`, JSON.stringify(await restJson('posts', k), null, 2));
+        else if (id === 'stories') download(`${n}-hikayeler-${stamp()}.json`, JSON.stringify(st.stories, null, 2));
+        else if (id === 'crashes') download(`${n}-cokme-raporlari-${stamp()}.json`, JSON.stringify(st.crashes, null, 2));
+        else if (id === 'ann') download(`${n}-duyurular-${stamp()}.json`, JSON.stringify(st.ann, null, 2));
+        else if (id === 'all') {
+          const all = await restJson('', k);
+          if (all && all.users) all.users = scrub(all.users);
+          download(`${n}-tam-yedek-${stamp()}.json`, JSON.stringify(all));
+        }
+        toast('İndirildi', 'ok');
+      } catch (e) { toast('Hata: ' + (e.message || e), 'err'); }
+      b.disabled = false; b.textContent = old;
+    });
   },
 };
 
