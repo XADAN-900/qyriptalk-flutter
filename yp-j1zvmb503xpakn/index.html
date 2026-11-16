@@ -1276,89 +1276,90 @@ function dmField(k, m) {
 }
 VIEWS.dms = {
   async mount(el) {
-    el.innerHTML = `<div class="toolbar"><input id="dq" placeholder="Kişiye göre ara…"><span class="muted" id="dc"></span></div>
-      <div class="tbl"><table><thead><tr><th>Sohbet</th><th>Mesaj</th><th>Son mesaj</th><th></th></tr></thead><tbody id="db"><tr><td colspan="4">${LOADING}</td></tr></tbody></table></div>`;
     const k = S.cur, node = DM_NODE();
-    let keys;
-    try { keys = await shallow(node, k); }
-    catch (e) { patch($('#db'), `<tr><td colspan="4"><div class="empty">Okunamadı: ${esc(e.message || e)}<br><span class="muted">Güncel kuralları Firebase'e yapıştırdığından emin ol.</span></div></td></tr>`); return; }
-    const names = Object.fromEntries((usersOf(k) || []).map((u) => [u.uid, u.name]));
-    const nm = (u) => names[u] || u.slice(0, 6);
-    const threads = await Promise.all(keys.map(async (key) => {
-      const parts = key.split('_');
-      let count = 0, last = null;
-      try {
-        count = (await shallow(`${node}/${key}/messages`, k)).length;
-        const s = await db(k).ref(`${node}/${key}/messages`).orderByKey().limitToLast(1).get();
-        s.forEach((c) => { last = c.val(); });
-      } catch (_) {}
-      const lf = last ? dmField(k, last) : null;
-      return { key, names: parts.map(nm), count, last: lf, ts: lf ? lf.ts : 0 };
-    }));
-    threads.sort((x, y) => y.ts - x.ts);
-    const prev = (f) => f.text || (f.type === 'voice' ? '🎤 Sesli mesaj' : f.type === 'video' ? '🎥 Video' : f.type === 'image' ? '📷 Fotoğraf' : (f.hasMedia ? '🎥 Medya' : ''));
+    el.innerHTML = `<div class="toolbar">
+        <input id="dq" placeholder="Ara (kişi veya mesaj)…">
+        <button id="drf" class="btn sm">↻ Yenile</button>
+        <span class="muted" id="dc"></span></div>
+      <div id="dwrap">${LOADING}</div>`;
+    const nm = (u, names) => names[u] || u.slice(0, 6);
+    const line = (f, name) => {
+      let media = '';
+      if (f.media && String(f.media).startsWith('data:image')) media = `<img src="${esc(f.media)}">`;
+      else if (f.type === 'video' && String(f.media).startsWith('data:video')) media = `<video src="${esc(f.media)}" controls></video>`;
+      else if ((f.type === 'voice' || f.type === 'audio') && String(f.media).startsWith('data:audio')) media = `<audio src="${esc(f.media)}" controls></audio>`;
+      else if (f.type === 'video' || f.hasMedia) media = '<div class="muted">🎥 Video</div>';
+      else if (f.type === 'voice') media = '<div class="muted">🎤 Sesli mesaj</div>';
+      else if (f.type === 'image') media = '<div class="muted">📷 Fotoğraf</div>';
+      return `<b>${esc(name)}</b> <span class="muted" style="font-size:12px">${fmt(f.ts)}</span><br>${esc(f.text)}${media}`;
+    };
+    let convos = [];
+    const load = async () => {
+      patch($('#dwrap'), LOADING);
+      let keys;
+      try { keys = await shallow(node, k); }
+      catch (e) { patch($('#dwrap'), `<div class="empty">Okunamadı: ${esc(e.message || e)}<br><span class="muted">Güncel kuralları Firebase'e yapıştırdığından emin ol.</span></div>`); return; }
+      const names = Object.fromEntries((usersOf(k) || []).map((u) => [u.uid, u.name]));
+      convos = await Promise.all(keys.map(async (key) => {
+        const parts = key.split('_');
+        let msgs = [];
+        try {
+          const s = await db(k).ref(`${node}/${key}/messages`).orderByKey().limitToLast(200).get();
+          s.forEach((c) => { const f = dmField(k, c.val() || {}); msgs.push({ mid: c.key, who: f.name || nm(f.from, names), f }); });
+        } catch (_) {}
+        const ts = msgs.length ? msgs[msgs.length - 1].f.ts : 0;
+        return { key, title: parts.map((u) => nm(u, names)).join('  ↔  '), names: parts.map((u) => nm(u, names)), msgs, ts };
+      }));
+      convos.sort((a, b) => b.ts - a.ts);
+      draw();
+    };
     const draw = () => {
       const q = $('#dq').value.trim().toLowerCase();
-      const list = threads.filter((t) => !q || t.names.some((n) => n.toLowerCase().includes(q)));
-      $('#dc').textContent = `${list.length} sohbet`;
-      patch($('#db'), list.map((t) => {
-        const who = t.last && t.last.from ? nm(t.last.from) : '';
-        return `<tr class="click" data-k="${esc(t.key)}">
-          <td><b>${esc(t.names[0])}</b> <span class="muted">↔</span> <b>${esc(t.names[1])}</b></td>
-          <td>${t.count}</td>
-          <td class="muted"><div class="dmprev">${who ? esc(who) + ': ' : ''}${esc(String(prev(t.last || {})).slice(0, 40))}</div><div style="font-size:11px">${ago(t.ts)}</div></td>
-          <td style="text-align:right"><button class="btn sm" data-open="${esc(t.key)}">Aç</button> <button class="btn sm danger" data-del="${esc(t.key)}">Sil</button></td></tr>`;
-      }).join('') || '<tr><td colspan="4" class="empty">Sohbet yok</td></tr>');
+      const list = convos.map((c) => {
+        if (!q) return c;
+        const nameHit = c.names.some((n) => n.toLowerCase().includes(q));
+        if (nameHit) return c;
+        const ms = c.msgs.filter((m) => (m.f.text || '').toLowerCase().includes(q) || m.who.toLowerCase().includes(q));
+        return ms.length ? { ...c, msgs: ms } : null;
+      }).filter(Boolean);
+      $('#dc').textContent = `${list.length} sohbet · ${list.reduce((a, c) => a + c.msgs.length, 0)} mesaj`;
+      patch($('#dwrap'), list.map((c) => `
+        <div class="card dmcard" style="margin-bottom:14px">
+          <div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+            <b class="grow" style="min-width:0;word-break:break-word">${esc(c.title)}</b>
+            <span class="muted" style="font-size:12px">${c.msgs.length} mesaj</span>
+            <button class="btn sm danger" data-del="${esc(c.key)}">Sohbeti sil</button>
+          </div>
+          <div class="msgs" style="max-height:none">
+            ${c.msgs.map((m) => `<div class="m1"><div class="t">${line(m.f, m.who)}</div><button class="btn sm danger" data-del1="${esc(c.key)}" data-mid="${esc(m.mid)}">🗑️</button></div>`).join('') || '<div class="empty">Mesaj yok</div>'}
+          </div>
+        </div>`).join('') || '<div class="empty">Sohbet yok</div>');
     };
+    $('#drf').onclick = load;
     $('#dq').oninput = draw;
-    $('#db').onclick = async (e) => {
-      const d = e.target.closest('[data-del]');
-      if (d) {
-        const key = d.dataset.del;
-        if (!(await ask('Sohbeti sil', 'Bu özel sohbetteki tüm mesajlar kalıcı olarak silinecek.', { ok: 'Sil', danger: true }))) return;
-        if (await act(() => db(k).ref(`${node}/${key}`).remove(), 'Sohbet silindi')) {
-          const i = threads.findIndex((x) => x.key === key);
-          if (i >= 0) threads.splice(i, 1);
+    $('#dwrap').onclick = async (e) => {
+      const m = e.target.closest('[data-del1]');
+      if (m) {
+        if (!(await ask('Mesajı sil', 'Bu mesaj kalıcı olarak silinecek.', { ok: 'Sil', danger: true }))) return;
+        if (await act(() => db(k).ref(`${node}/${m.dataset.del1}/messages/${m.dataset.mid}`).remove(), 'Mesaj silindi')) {
+          const c = convos.find((x) => x.key === m.dataset.del1);
+          if (c) c.msgs = c.msgs.filter((x) => x.mid !== m.dataset.mid);
           draw();
         }
         return;
       }
-      const row = e.target.closest('tr[data-k]');
-      if (row) dmThread(k, row.dataset.k, names);
+      const d = e.target.closest('[data-del]');
+      if (d) {
+        if (!(await ask('Sohbeti sil', 'Bu özel sohbetteki tüm mesajlar kalıcı olarak silinecek.', { ok: 'Sil', danger: true }))) return;
+        if (await act(() => db(k).ref(`${node}/${d.dataset.del}`).remove(), 'Sohbet silindi')) {
+          convos = convos.filter((x) => x.key !== d.dataset.del);
+          draw();
+        }
+      }
     };
-    draw();
+    load();
   },
 };
-
-function dmThread(k, key, names) {
-  const node = DM_NODE();
-  const ref = db(k).ref(`${node}/${key}/messages`).orderByKey().limitToLast(1000);
-  const title = key.split('_').map((u) => names[u] || u.slice(0, 6)).join(' ↔ ');
-  const o = dialog(`<div class="row"><h2 class="grow">${esc(title)}</h2><span class="live"><i></i>Canlı</span></div><div class="muted">Tüm mesajlar</div><div class="msgs" id="dml">${LOADING}</div><div class="actions"><button class="btn" data-x>Kapat</button></div>`, true, () => ref.off('value', cb));
-  $('[data-x]', o).onclick = () => o.close();
-  const render = (f, name) => {
-    let body = esc(f.text);
-    if (f.media && String(f.media).startsWith('data:image')) body += `<img src="${esc(f.media)}">`;
-    else if (f.type === 'video' && String(f.media).startsWith('data:video')) body += `<video src="${esc(f.media)}" controls></video>`;
-    else if ((f.type === 'voice' || f.type === 'audio') && String(f.media).startsWith('data:audio')) body += `<audio src="${esc(f.media)}" controls></audio>`;
-    else if (f.type === 'video' || f.hasMedia) body += '<div class="muted">🎥 Video</div>';
-    else if (f.type === 'voice') body += '<div class="muted">🎤 Sesli mesaj</div>';
-    else if (f.type === 'image') body += '<div class="muted">📷 Fotoğraf</div>';
-    return `<b>${esc(name)}</b> <span class="muted" style="font-size:12px">${fmt(f.ts)}</span><br>${body}`;
-  };
-  const cb = (snap) => {
-    const rows = []; snap.forEach((c) => rows.push([c.key, c.val() || {}]));
-    const box = $('#dml', o); const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
-    patch(box, rows.map(([mid, m]) => {
-      const f = dmField(k, m);
-      const name = f.name || names[f.from] || f.from.slice(0, 6);
-      return `<div class="m1"><div class="t">${render(f, name)}</div><button class="btn sm danger" data-d="${esc(mid)}">🗑️</button></div>`;
-    }).join('') || '<div class="empty">Mesaj yok</div>');
-    if (atBottom) box.scrollTop = box.scrollHeight;
-  };
-  ref.on('value', cb, (e) => patch($('#dml', o), `<div class="empty">${esc(e.message)}</div>`));
-  $('#dml', o).onclick = (e) => { const b = e.target.closest('[data-d]'); if (b) act(() => db(k).ref(`${node}/${key}/messages/${b.dataset.d}`).remove(), 'Mesaj silindi'); };
-}
 
 // ---------------- Duyurular ----------------
 VIEWS.announce = {
