@@ -327,6 +327,8 @@ $('#pForm').onsubmit = async (e) => {
   if (pass.length < 6) { m.className = 'msg err'; m.textContent = 'Şifre hatalı.'; return; }
   const email = panelEmail(user);
   S.errs = {};
+  S.pass = pass; S.loggingIn = true;
+  try { sessionStorage.setItem('xadan_pp', pass); } catch (_) {}
   await Promise.all(['qt', 'fq'].map(async (k) => {
     try { await panelSignIn(k, email, pass); S.sess[k] = { authUid: FB[k].auth.currentUser.uid, name: user }; S.pass = pass; try { sessionStorage.setItem('xadan_pp', pass); } catch (_) {} }
     catch (x) { S.errs[k] = x.message || String(x); }
@@ -370,7 +372,8 @@ for (const k of ['qt', 'fq']) {
     let u = user;
     // Oturum sadece bu tarayıcı oturumunda giriş yapıldıysa sürer; yoksa giriş ekranı gelir
     // (girişte yazılan şifre, şifre değiştirme kilidini de sormadan açar).
-    if (u && !S.pass) { FB[k].auth.signOut().catch(() => {}); u = null; }
+    // Sadece sayfa açılışındaki eski oturum için (giriş yapılırken dokunma).
+    if (u && !S.pass && !S.loggingIn) { FB[k].auth.signOut().catch(() => {}); u = null; }
     if (u && !S.sess[k] && (u.email || '').endsWith(PANEL_DOMAIN)) {
       S.sess[k] = { authUid: u.uid, name: u.email.split('@')[0] };
       startLive(k);
