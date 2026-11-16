@@ -432,11 +432,77 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     await _startSession();
   }
 
-  Future<void> logout() async {
+  /// Kullanıcı bir içeriği / kişiyi yöneticiye şikayet eder (yönetim panelinde görünür).
+  Future<void> report({
+    required String type,
+    required String targetUid,
+    String path = '',
+    String preview = '',
+    required String reason,
+  }) async {
+    final uid = _uid;
+    if (uid == null) return;
+    await db.ref('reports').push().set({
+      'app': 'Qyriptalk',
+      'type': type,
+      'targetUid': targetUid,
+      'targetName': users[targetUid]?.username ?? '',
+      'path': path,
+      'preview': preview.length > 400 ? preview.substring(0, 400) : preview,
+      'reason': reason,
+      'from': uid,
+      'fromName': username,
+      'ts': ServerValue.timestamp,
+    });
+  }
+
+  /// Hesabı kalıcı olarak siler (profil, kullanıcı adı, oda üyelikleri, giriş hesabı).
+  Future<String?> deleteMyAccount(String password) async {
+    final uid = _uid;
+    if (uid == null) return 'Oturum yok.';
+    final u = auth.currentUser;
+    try {
+      if (u != null) {
+        await u.reauthenticateWithCredential(
+            EmailAuthProvider.credential(email: u.email ?? authEmail(uid), password: authPassword(password)));
+      } else {
+        final s = await db.ref('users/$uid/password').get();
+        if (asStr(s.value) != password) return 'Şifre hatalı.';
+      }
+    } on FirebaseAuthException catch (e) {
+      return e.code == 'network-request-failed' ? 'İnternet bağlantını kontrol et.' : 'Şifre hatalı.';
+    } catch (_) {
+      return 'Şifre doğrulanamadı.';
+    }
+    try {
+      await db.ref('users/$uid').onDisconnect().cancel();
+      await db.ref('users/$uid/isOnline').onDisconnect().cancel();
+      await db.ref('users/$uid/lastSeen').onDisconnect().cancel();
+      final up = <String, Object?>{
+        'users/$uid': null,
+        'usernames/${nameKey(username)}/$uid': null,
+        'fcmTokens/$uid': null,
+      };
+      for (final r in joinedRoomIds) {
+        up['rooms/$r/users/$uid'] = null;
+      }
+      await db.ref().update(up);
+      if (u != null) {
+        await db.ref('authMap/${u.uid}').remove().catchError((_) {});
+        await u.delete().catchError((_) {});
+      }
+    } catch (e) {
+      return 'Hesap silinemedi: $e';
+    }
+    await logout(deleted: true);
+    return null;
+  }
+
+  Future<void> logout({bool deleted = false}) async {
     final uid = _uid;
     await NativeBridge.clearSession();
     await OfflineStore.clearAll();
-    if (uid != null) {
+    if (uid != null && !deleted) {
       try {
         await NotificationService.unregisterToken(db, uid);
         await db.ref('users/$uid/isOnline').set(false);

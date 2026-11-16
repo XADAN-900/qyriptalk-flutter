@@ -7,6 +7,7 @@ import '../core/utils.dart';
 import '../services/app_state.dart';
 import '../services/call_service.dart';
 import '../widgets/avatar.dart';
+import '../widgets/report_sheet.dart';
 import 'chat_screen.dart';
 import 'media_viewer.dart';
 
@@ -118,6 +119,17 @@ class UserProfileScreen extends StatelessWidget {
               leading: const Icon(Icons.verified_user_outlined),
               title: const Text('Rol'),
               subtitle: Text(u.role == 'admin' ? 'Yönetici' : 'Moderatör'),
+            ),
+          if (uid != me)
+            ListTile(
+              leading: const Icon(Icons.flag_outlined, color: QColors.danger),
+              title: const Text('Şikayet et', style: TextStyle(color: QColors.danger)),
+              onTap: () async {
+                final reason = await pickReportReason(context, title: '${u.username} şikayet et');
+                if (reason == null) return;
+                await app.report(type: 'user', targetUid: uid, preview: u.bio, reason: reason).catchError((_) {});
+                if (context.mounted) showSnack(context, 'Şikayetin yöneticiye iletildi. Teşekkürler.');
+              },
             ),
           if (uid != me)
             ListTile(

@@ -15,6 +15,7 @@ import '../core/theme.dart';
 import '../core/utils.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
+import '../widgets/report_sheet.dart';
 import '../services/offline_store.dart';
 import '../services/call_service.dart';
 import '../services/chat_repo.dart';
@@ -729,6 +730,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               _action(ctx, Icons.check_circle_outline_rounded, 'Seç', () {
                 setState(() => _selected.add(m.id));
               }),
+              if (!mine)
+                _action(ctx, Icons.flag_outlined, 'Şikayet et', () => _report(m)),
               if (mine || _canModerate)
                 _action(ctx, Icons.delete_outline_rounded, 'Herkesten sil', () async {
                   final ok = await confirmDialog(context,
@@ -922,6 +925,24 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _focus.dispose();
     _scroll.dispose();
     super.dispose();
+  }
+
+  Future<void> _report(ChatMessage m) async {
+    final reason = await pickReportReason(context, title: 'Mesajı şikayet et');
+    if (reason == null || !mounted) return;
+    final preview = m.type == 'text' ? m.text : '[${m.type}] ${m.caption}';
+    try {
+      await app.report(
+        type: 'message',
+        targetUid: m.senderUid,
+        path: '${ref.basePath}/messages/${m.id}',
+        preview: preview,
+        reason: reason,
+      );
+      if (mounted) showSnack(context, 'Şikayetin yöneticiye iletildi. Teşekkürler.');
+    } catch (_) {
+      if (mounted) showSnack(context, 'Şikayet gönderilemedi.', error: true);
+    }
   }
 
   Future<void> _toggleBlock() async {

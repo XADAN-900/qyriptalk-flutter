@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import '../core/theme.dart';
 import '../core/utils.dart';
 import '../services/app_state.dart';
+import '../services/app_guard.dart';
 import '../services/native_bridge.dart';
 import '../widgets/avatar.dart';
 import 'rooms_tab.dart';
@@ -369,7 +370,7 @@ class SettingsTab extends StatelessWidget {
             const ListTile(
               leading: Icon(Icons.info_outline_rounded),
               title: Text('Qyriptalk'),
-              subtitle: Text('Sürüm 2.0.0 · Flutter'),
+              subtitle: Text('Sürüm 2.1 · derleme ${AppGuard.build}'),
             ),
             ListTile(
               leading: const Icon(Icons.logout_rounded, color: QColors.danger),
@@ -381,6 +382,24 @@ class SettingsTab extends StatelessWidget {
                     confirmText: 'Çıkış yap',
                     destructive: true);
                 if (ok) await app.logout();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_forever_rounded, color: QColors.danger),
+              title: const Text('Hesabımı sil', style: TextStyle(color: QColors.danger)),
+              subtitle: const Text('Profilin, kullanıcı adın ve oda üyeliklerin kalıcı olarak silinir'),
+              onTap: () async {
+                final ok = await confirmDialog(context,
+                    title: 'Hesabını sil',
+                    message: 'Hesabın kalıcı olarak silinecek. Bu işlem geri alınamaz.',
+                    confirmText: 'Devam',
+                    destructive: true);
+                if (!ok || !context.mounted) return;
+                final pw = await promptText(context,
+                    title: 'Şifreni yaz', hint: 'Onaylamak için şifren', obscure: true, confirmText: 'Hesabımı sil');
+                if (pw == null || pw.isEmpty || !context.mounted) return;
+                final err = await app.deleteMyAccount(pw);
+                if (err != null && context.mounted) showSnack(context, err, error: true);
               },
             ),
           ]),

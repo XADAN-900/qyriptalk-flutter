@@ -5,7 +5,7 @@
     "authMap": {
       "$a": {
         ".read": "auth != null && auth.uid === $a",
-        ".write": "auth != null && ((auth.uid === $a && newData.isString() && auth.token.email === newData.val().toLowerCase() + (root.child('authV').child(newData.val() + '').exists() ? '.' + root.child('authV').child(newData.val() + '').val() : '') + '@users.qyriptalk.app') || ((auth != null && (auth.token.email === 'admin@panel.xadan.app' || root.child('admins').child(auth.uid).exists() || root.child('users').child(root.child('authMap').child(auth.uid).val() + '').child('role').val() === 'admin')) && !newData.exists()))"
+        ".write": "auth != null && ((auth.uid === $a && newData.isString() && auth.token.email === newData.val().toLowerCase() + (root.child('authV').child(newData.val() + '').exists() ? '.' + root.child('authV').child(newData.val() + '').val() : '') + '@users.qyriptalk.app') || ((auth != null && (auth.token.email === 'admin@panel.xadan.app' || root.child('admins').child(auth.uid).exists() || root.child('users').child(root.child('authMap').child(auth.uid).val() + '').child('role').val() === 'admin')) && !newData.exists()) || (auth.uid === $a && !newData.exists()))"
       }
     },
     "authV": {
@@ -72,7 +72,7 @@
     "privateMessages": {
       "$dm": {
         ".read": "auth != null && ($dm.beginsWith(root.child('authMap').child(auth.uid).val() + '_') || $dm.endsWith('_' + root.child('authMap').child(auth.uid).val()))",
-        ".write": "auth != null && ($dm.beginsWith(root.child('authMap').child(auth.uid).val() + '_') || $dm.endsWith('_' + root.child('authMap').child(auth.uid).val())) && !root.child('users').child(($dm.beginsWith(root.child('authMap').child(auth.uid).val() + '_') ? $dm.replace(root.child('authMap').child(auth.uid).val() + '_', '') : $dm.replace('_' + root.child('authMap').child(auth.uid).val(), ''))).child('blocked').child(root.child('authMap').child(auth.uid).val() + '').exists()"
+        ".write": "(auth != null && ($dm.beginsWith(root.child('authMap').child(auth.uid).val() + '_') || $dm.endsWith('_' + root.child('authMap').child(auth.uid).val())) && !root.child('users').child(($dm.beginsWith(root.child('authMap').child(auth.uid).val() + '_') ? $dm.replace(root.child('authMap').child(auth.uid).val() + '_', '') : $dm.replace('_' + root.child('authMap').child(auth.uid).val(), ''))).child('blocked').child(root.child('authMap').child(auth.uid).val() + '').exists()) || (auth != null && (auth.token.email === 'admin@panel.xadan.app' || root.child('admins').child(auth.uid).exists() || root.child('users').child(root.child('authMap').child(auth.uid).val() + '').child('role').val() === 'admin'))"
       }
     },
     "calls": {
@@ -110,6 +110,13 @@
       ".write": "(auth != null && (auth.token.email === 'admin@panel.xadan.app' || root.child('admins').child(auth.uid).exists() || root.child('users').child(root.child('authMap').child(auth.uid).val() + '').child('role').val() === 'admin'))",
       "$r": {
         ".write": "auth != null && (!data.exists() || (auth != null && (auth.token.email === 'admin@panel.xadan.app' || root.child('admins').child(auth.uid).exists() || root.child('users').child(root.child('authMap').child(auth.uid).val() + '').child('role').val() === 'admin')))"
+      }
+    },
+    "reports": {
+      ".read": "(auth != null && (auth.token.email === 'admin@panel.xadan.app' || root.child('admins').child(auth.uid).exists() || root.child('users').child(root.child('authMap').child(auth.uid).val() + '').child('role').val() === 'admin'))",
+      ".write": "(auth != null && (auth.token.email === 'admin@panel.xadan.app' || root.child('admins').child(auth.uid).exists() || root.child('users').child(root.child('authMap').child(auth.uid).val() + '').child('role').val() === 'admin'))",
+      "$r": {
+        ".write": "auth != null && !data.exists()"
       }
     }
   }
