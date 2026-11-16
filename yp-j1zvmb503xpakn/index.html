@@ -208,6 +208,7 @@ for (const k of ['qt', 'fq']) {
   FB[k] = { app, auth: app.auth(), db: app.database() };
 }
 const S = { cur: 'qt', view: 'overview', sess: { qt: null, fq: null }, charts: {}, errs: {} };
+try { S.pass = sessionStorage.getItem('xadan_pp') || null; } catch (_) {}
 
 // =====================================================================
 // YARDIMCILAR
@@ -327,7 +328,7 @@ $('#pForm').onsubmit = async (e) => {
   const email = panelEmail(user);
   S.errs = {};
   await Promise.all(['qt', 'fq'].map(async (k) => {
-    try { await panelSignIn(k, email, pass); S.sess[k] = { authUid: FB[k].auth.currentUser.uid, name: user }; S.pass = pass; }
+    try { await panelSignIn(k, email, pass); S.sess[k] = { authUid: FB[k].auth.currentUser.uid, name: user }; S.pass = pass; try { sessionStorage.setItem('xadan_pp', pass); } catch (_) {} }
     catch (x) { S.errs[k] = x.message || String(x); }
   }));
   // Tek ad + tek şifre: bir projede doğrulandıysa diğeri de açılır
@@ -357,6 +358,7 @@ function showPick() {
 document.querySelectorAll('.pickc').forEach((b) => b.onclick = () => { if (S.sess[b.dataset.k]) enterPanel(b.dataset.k); });
 $('#pOut').onclick = (e) => { e.preventDefault(); logoutAll(); };
 async function logoutAll() {
+  try { sessionStorage.removeItem('xadan_pp'); } catch (_) {}
   await Promise.all(['qt', 'fq'].map((k) => FB[k].auth.signOut().catch(() => {})));
   location.reload();
 }
@@ -509,14 +511,14 @@ function renderWho() {
     if (!pw) return;
     if (pw.length < 8) { toast('En az 8 karakter olmalı.', 'err'); return; }
     await act(async () => {
-      const sa = await vaultOpen(cur).catch(() => null);
+      const sa = SA_MEM || await vaultOpen(cur).catch(() => null) || await openEmbedded(cur).catch(() => null);
       for (const k of ['qt', 'fq'].filter((x) => S.sess[x] && FB[x].auth.currentUser)) {
         const u = FB[k].auth.currentUser;
         await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email, cur));
         await u.updatePassword(pw);
       }
       if (sa) await vaultSave(sa, pw); // kayıtlı anahtar yeni şifreyle yeniden kilitlenir
-      S.pass = pw;
+      S.pass = pw; try { sessionStorage.setItem('xadan_pp', pw); } catch (_) {}
     }, 'Panel şifresi değiştirildi ✅');
   };
 }
@@ -757,7 +759,7 @@ async function vaultOpen(pass) {
   return JSON.parse(new TextDecoder().decode(pt));
 }
 /** FlinQ hizmet anahtarı — ŞİFRELİ (AES-256-GCM, PBKDF2 310.000 tur). Sadece anahtar şifresiyle açılır. */
-const EMBEDDED_VAULT = {"v": 1, "salt": "uLQueVqwzcHc20sYRkDE6g==", "iv": "QEDI+tSl4hbJ8QRV", "ct": "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"};
+const EMBEDDED_VAULT = {"v": 1, "salt": "eRnTJUmMPTCay1/b3U0qOg==", "iv": "/Sb6jFG7HYb5UbO6", "ct": "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"};
 async function openEmbedded(pass) {
   const v = EMBEDDED_VAULT;
   const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64d(v.iv) }, await vaultKey(pass, b64d(v.salt)), b64d(v.ct));
@@ -768,8 +770,11 @@ async function openEmbedded(pass) {
 async function ensureSA() {
   if (getSA()) return getSA();
   if (EMBEDDED_VAULT) {
-    // Panel şifresi anahtar şifresiyle aynıysa hiç sormadan açılır.
-    if (S.pass) { try { SA_MEM = await openEmbedded(S.pass); return SA_MEM; } catch (_) {} }
+    // Panelin giriş şifresiyle sormadan açılır (şifre değiştirildiyse veritabanındaki kopyadan).
+    if (S.pass) {
+      try { const x = await vaultOpen(S.pass); if (x) { SA_MEM = x; return SA_MEM; } } catch (_) {}
+      try { SA_MEM = await openEmbedded(S.pass); return SA_MEM; } catch (_) {}
+    }
     for (let i = 0; i < 3; i++) {
       const p = await ask('Anahtar şifresi', 'FlinQ şifre değiştirme için anahtar şifresini yaz (bu oturumda bir kez sorulur).', { input: 'Anahtar şifresi', ok: 'Aç', type: 'password' });
       if (!p) return null;
