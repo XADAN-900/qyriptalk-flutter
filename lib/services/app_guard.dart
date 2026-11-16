@@ -77,36 +77,61 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _resumed = true;
       final last = _lastUpdateCheck;
       if (last == null || DateTime.now().difference(last) > const Duration(hours: 6)) _checkUpdate();
+      _showPendingAnnouncement();
+    } else {
+      _resumed = false;
     }
   }
 
   // ---------------- Duyuru ----------------
+  bool _resumed = true;
+  bool _showingAnn = false;
+  String? _pendingAnnId;
+  Map<String, dynamic>? _pendingAnn;
+
   Future<void> _onAnnouncement(DatabaseEvent e) async {
     final id = e.snapshot.key;
     final v = e.snapshot.value;
     if (id == null || v is! Map) return;
     final m = v.map((k, x) => MapEntry('$k', x));
     final ts = m['ts'] is num ? (m['ts'] as num).toInt() : 0;
-    // Bir haftadan eski duyuru gösterilmez.
     if (ts > 0 && DateTime.now().millisecondsSinceEpoch - ts > 7 * 24 * 3600 * 1000) return;
     final prefs = await SharedPreferences.getInstance();
     final seen = prefs.getString('announcementSeen') ?? '';
     if (seen.compareTo(id) >= 0) return;
-    await prefs.setString('announcementSeen', id);
-    if (!mounted) return;
-    final title = '${m['title'] ?? 'Duyuru'}';
-    final body = '${m['body'] ?? ''}';
-    await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: Icon(Icons.campaign_rounded, size: 40, color: widget.accent),
-        title: Text(title),
-        content: SingleChildScrollView(child: Text(body)),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Tamam'))],
-      ),
-    );
+    // "Görüldü" işareti pencere gerçekten gösterilince konur.
+    _pendingAnnId = id;
+    _pendingAnn = m;
+    _showPendingAnnouncement();
+  }
+
+  Future<void> _showPendingAnnouncement() async {
+    final id = _pendingAnnId;
+    final m = _pendingAnn;
+    if (id == null || m == null || _showingAnn) return;
+    if (!_resumed || !mounted) return; // arka plandaysa öne gelince gösterilir
+    _showingAnn = true;
+    _pendingAnnId = null;
+    _pendingAnn = null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('announcementSeen', id);
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: Icon(Icons.campaign_rounded, size: 40, color: widget.accent),
+          title: Text('${m['title'] ?? 'Duyuru'}'),
+          content: SingleChildScrollView(child: Text('${m['body'] ?? ''}')),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Tamam'))],
+        ),
+      );
+    } finally {
+      _showingAnn = false;
+    }
   }
 
   // ---------------- Güncelleme ----------------
