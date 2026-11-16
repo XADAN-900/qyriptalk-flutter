@@ -45,7 +45,7 @@ textarea{resize:vertical;min-height:90px}
 .login-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px;margin-top:22px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px}
 .card h3{margin:0 0 12px;font-size:16px}
-.login-card .tag{display:inline-block;padding:3px 9px;border-radius:99px;font-size:12px;font-weight:700;margin-bottom:10px}
+.tag{display:inline-block;padding:3px 9px;border-radius:99px;font-size:12px;font-weight:700;margin-bottom:10px}
 .tag.qt{background:rgba(123,97,255,.15);color:#b3a5ff}.tag.fq{background:rgba(255,61,113,.15);color:#ff9ab4}
 .field{margin-bottom:10px}
 .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:600}
@@ -123,34 +123,25 @@ pre.crash{white-space:pre-wrap;word-break:break-word;background:#07080d;border:1
 
 <!-- ======================= GİRİŞ ======================= -->
 <div id="login">
-  <div class="login-box">
+  <div class="login-box" style="width:min(460px,100%)">
     <div class="brand"><span>XADAN</span> Yönetim Paneli</div>
-    <div class="muted">Qyriptalk ve FlinQ'yu tek yerden yönet. Sadece yönetici hesapları girebilir.</div>
-    <div class="login-grid">
-      <div class="card login-card">
-        <div class="tag qt">Qyriptalk</div>
-        <h3>Yönetici girişi</h3>
-        <form id="qtForm">
-          <div class="field"><label>Kullanıcı adı</label><input id="qtUser" autocomplete="username"></div>
-          <div class="field"><label>Şifre</label><input id="qtPass" type="password" autocomplete="current-password"></div>
-          <button class="btn primary" style="background:var(--qt)" type="submit">Giriş yap</button>
-          <div class="msg" id="qtMsg"></div>
-        </form>
-      </div>
-      <div class="card login-card">
-        <div class="tag fq">FlinQ</div>
-        <h3>Yönetici girişi</h3>
-        <form id="fqForm">
-          <div class="field"><label>E-posta ya da kullanıcı adı</label><input id="fqUser" autocomplete="username"></div>
-          <div class="field"><label>Şifre</label><input id="fqPass" type="password" autocomplete="current-password"></div>
-          <button class="btn primary" style="background:var(--fq)" type="submit">Giriş yap</button>
-          <div class="msg" id="fqMsg"></div>
-        </form>
-      </div>
+    <div class="muted">Qyriptalk ve FlinQ için tek giriş.</div>
+    <div class="card" style="margin-top:22px" id="loginCard">
+      <form id="pForm">
+        <div class="field"><label>Kullanıcı adı</label><input id="pUser" autocomplete="username" value=""></div>
+        <div class="field"><label>Şifre</label><input id="pPass" type="password" autocomplete="current-password"></div>
+        <button class="btn primary" type="submit" style="width:100%;justify-content:center;background:linear-gradient(90deg,var(--qt),var(--fq))">Giriş yap</button>
+        <div class="msg" id="pMsg"></div>
+      </form>
     </div>
-    <div class="row" style="margin-top:18px">
-      <button class="btn hidden" id="enterPanel">Panele geç →</button>
-      <span class="muted" style="font-size:12.5px">İki uygulamaya da ayrı ayrı girebilir ya da sadece birine girebilirsin.</span>
+    <div id="approve"></div>
+    <div id="pick" class="hidden" style="margin-top:22px">
+      <div class="muted" style="margin-bottom:10px">Hangi uygulamaya bakmak istiyorsun?</div>
+      <div class="login-grid" style="margin-top:0">
+        <button class="card pickc" data-k="qt" style="text-align:left;cursor:pointer;color:inherit"><div class="tag qt">Qyriptalk</div><h3>Sohbet · Odalar · Aramalar</h3><div class="muted" id="pickqt"></div></button>
+        <button class="card pickc" data-k="fq" style="text-align:left;cursor:pointer;color:inherit"><div class="tag fq">FlinQ</div><h3>Gönderiler · Hikayeler · DM</h3><div class="muted" id="pickfq"></div></button>
+      </div>
+      <div style="margin-top:14px"><a href="#" id="pOut" class="muted">Çıkış yap</a></div>
     </div>
   </div>
 </div>
@@ -292,89 +283,125 @@ async function act(fn, okMsg) {
 }
 
 // =====================================================================
-// GİRİŞ
+// GİRİŞ (tek hesap: iki uygulamaya da aynı panel hesabıyla girilir)
 // =====================================================================
-async function isAdminQt(authUid, legacyUid) {
-  const [a, role] = await Promise.all([val(`admins/${authUid}`, 'qt'), legacyUid ? val(`users/${legacyUid}/role`, 'qt') : null]);
-  return !!a || role === 'admin';
-}
-async function bootstrapOrDeny(k, msgEl, authUid) {
-  const any = await db(k).ref('admins').get().then((s) => s.exists()).catch(() => true);
-  if (!any) {
-    msgEl.className = 'msg ok';
-    msgEl.innerHTML = `Henüz hiç yönetici yok. <button class="btn sm" id="claim_${k}">Beni yönetici yap</button>`;
-    $('#claim_' + k).onclick = async () => {
-      if (await act(() => db(k).ref(`admins/${authUid}`).set(true), 'Artık yöneticisin ✅')) await afterLogin(k);
-    };
-    return false;
-  }
-  await FB[k].auth.signOut();
-  msgEl.className = 'msg err'; msgEl.textContent = 'Bu hesap yönetici değil.';
-  return false;
-}
+// Panel hesabı her iki Firebase projesinde ayrı bir hesap olarak durur (şifre kodda YOK;
+// Firebase Authentication doğrular). Kullanıcı adı -> gizli e-posta.
+const panelEmail = (u) => `${u.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '')}@panel.xadan.app`;
 
-$('#qtForm').onsubmit = async (e) => {
-  e.preventDefault();
-  const m = $('#qtMsg'); m.className = 'msg'; m.textContent = 'Kontrol ediliyor…';
-  const user = $('#qtUser').value.trim(), pass = $('#qtPass').value;
-  if (!user || !pass) { m.className = 'msg err'; m.textContent = 'Kullanıcı adı ve şifre gir.'; return; }
+async function panelSignIn(k, email, pass) {
+  const auth = FB[k].auth;
   try {
-    const ids = Object.keys((await val(`usernames/${nameKey(user)}`, 'qt')) || {});
-    if (!ids.length) throw new Error('Bu kullanıcı adı bulunamadı (hesabın yeni uygulamayla en az bir kez giriş yapmış olmalı).');
-    let ok = false, lastErr = null;
-    for (const uid of ids) {
-      const ver = (await val(`authV/${uid}`, 'qt')) || '';
-      try { await FB.qt.auth.signInWithEmailAndPassword(qtEmail(uid, ver), qtPass(pass)); ok = true; break; }
-      catch (x) { lastErr = x; if (x.code === 'auth/operation-not-allowed') throw new Error('Firebase\'de Email/Password girişi açık değil.'); }
-    }
-    if (!ok) throw new Error(lastErr && lastErr.code === 'auth/too-many-requests' ? 'Çok fazla deneme. Biraz bekle.' : 'Şifre hatalı.');
-    await afterLogin('qt');
-  } catch (x) { m.className = 'msg err'; m.textContent = x.message || String(x); }
-};
-
-$('#fqForm').onsubmit = async (e) => {
-  e.preventDefault();
-  const m = $('#fqMsg'); m.className = 'msg'; m.textContent = 'Kontrol ediliyor…';
-  let email = $('#fqUser').value.trim(); const pass = $('#fqPass').value;
-  try {
-    if (!email.includes('@')) {
-      const em = await val(`emails/${email.toLowerCase()}`, 'fq');
-      if (!em) throw new Error('Bu kullanıcı adıyla e-posta bulunamadı, e-postanla gir.');
-      email = em;
-    }
-    await FB.fq.auth.signInWithEmailAndPassword(email, pass);
-    await afterLogin('fq');
+    await auth.signInWithEmailAndPassword(email, pass);
   } catch (x) {
-    m.className = 'msg err';
-    m.textContent = /wrong-password|invalid-credential|user-not-found|invalid-login/.test(x.code || '') ? 'E-posta / şifre hatalı.' : (x.message || String(x));
+    const c = x.code || '';
+    if (c === 'auth/operation-not-allowed') throw new Error(`${CFG[k].name}: Firebase'de Email/Password girişi açık değil.`);
+    if (c === 'auth/too-many-requests') throw new Error('Çok fazla deneme yapıldı. Biraz bekle.');
+    if (!/user-not-found|invalid-credential|invalid-login|wrong-password/.test(c)) throw x;
+    // Hesap yoksa ve henüz hiç yönetici yoksa (ilk kurulum) panel hesabını oluştur.
+    const anyAdmin = await db(k).ref('admins').get().then((s) => s.exists()).catch(() => true);
+    if (anyAdmin) throw new Error('Kullanıcı adı ya da şifre hatalı.');
+    await auth.createUserWithEmailAndPassword(email, pass);
   }
+  const uid = auth.currentUser.uid;
+  let admin = !!(await val(`admins/${uid}`, k).catch(() => null));
+  if (!admin) {
+    const anyAdmin = await db(k).ref('admins').get().then((s) => s.exists()).catch(() => true);
+    if (!anyAdmin) { await db(k).ref(`admins/${uid}`).set(true); admin = true; }
+  }
+  return admin;
+}
+
+$('#pForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const m = $('#pMsg'); m.className = 'msg'; m.textContent = 'Giriş yapılıyor…';
+  const user = $('#pUser').value.trim(), pass = $('#pPass').value;
+  if (!user || !pass) { m.className = 'msg err'; m.textContent = 'Kullanıcı adı ve şifre gir.'; return; }
+  if (pass.length < 6) { m.className = 'msg err'; m.textContent = 'Şifre en az 6 karakter olmalı.'; return; }
+  const email = panelEmail(user);
+  const res = {}, errs = [];
+  for (const k of ['qt', 'fq']) {
+    try { res[k] = await panelSignIn(k, email, pass); }
+    catch (x) { res[k] = null; errs.push(x.message || String(x)); }
+  }
+  for (const k of ['qt', 'fq']) if (res[k]) S.sess[k] = { authUid: FB[k].auth.currentUser.uid, uid: '', name: user };
+  const notAdmin = ['qt', 'fq'].filter((k) => res[k] === false);
+  if (!S.sess.qt && !S.sess.fq && !notAdmin.length) { m.className = 'msg err'; m.textContent = [...new Set(errs)].join(' '); return; }
+  m.className = 'msg ok'; m.textContent = 'Giriş yapıldı.';
+  renderApprove(notAdmin, email, pass, user);
+  showPick();
 };
 
-async function afterLogin(k) {
-  const user = FB[k].auth.currentUser; if (!user) return;
-  const msgEl = $('#' + k + 'Msg');
-  let legacy = user.uid, name = user.email;
-  if (k === 'qt') {
-    legacy = (await val(`authMap/${user.uid}`, 'qt').catch(() => null)) || '';
-    name = legacy ? ((await val(`users/${legacy}/username`, 'qt')) || name) : name;
-  } else {
-    name = (await val(`users/${user.uid}/username`, 'fq').catch(() => null)) || name;
-  }
-  const admin = k === 'qt' ? await isAdminQt(user.uid, legacy).catch(() => false)
-    : !!(await val(`admins/${user.uid}`, 'fq').catch(() => null));
-  if (!admin) { await bootstrapOrDeny(k, msgEl, user.uid); return; }
-  S.sess[k] = { authUid: user.uid, uid: legacy, name };
-  msgEl.className = 'msg ok'; msgEl.textContent = `Giriş yapıldı: ${name}`;
-  $('#enterPanel').classList.remove('hidden');
-  if (!S.entered) enterPanel(k);
+/** Daha önce başka bir hesap yönetici yapıldıysa: o hesapla bir kez onay alıp panel hesabını yönetici yap. */
+function renderApprove(list, email, pass, user) {
+  const box = $('#approve');
+  box.innerHTML = list.map((k) => `
+    <div class="card" style="margin-top:14px" id="ap_${k}">
+      <div class="tag ${k}">${CFG[k].name}</div>
+      <div class="muted" style="margin-bottom:10px">Bu uygulamada zaten bir yönetici var. Panel hesabını yetkilendirmek için <b>bir kez</b> o yönetici hesabıyla onayla.</div>
+      <div class="field"><label>${k === 'qt' ? 'Yönetici kullanıcı adı' : 'Yönetici e-posta / kullanıcı adı'}</label><input data-u></div>
+      <div class="field"><label>Şifre</label><input data-p type="password"></div>
+      <button class="btn primary" data-go style="background:${CFG[k].color}">Onayla</button>
+      <div class="msg" data-m></div>
+    </div>`).join('');
+  list.forEach((k) => {
+    const c = $('#ap_' + k);
+    $('[data-go]', c).onclick = async () => {
+      const mm = $('[data-m]', c); mm.className = 'msg'; mm.textContent = 'Onaylanıyor…';
+      let tmp;
+      try { tmp = firebase.app('approve_' + k); } catch (_) { tmp = firebase.initializeApp(CFG[k].fb, 'approve_' + k); }
+      try {
+        let u = $('[data-u]', c).value.trim(); const p = $('[data-p]', c).value;
+        if (k === 'qt') {
+          const ids = Object.keys((await val(`usernames/${nameKey(u)}`, 'qt')) || {});
+          let ok = false;
+          for (const id of ids) {
+            const ver = (await val(`authV/${id}`, 'qt')) || '';
+            try { await tmp.auth().signInWithEmailAndPassword(qtEmail(id, ver), qtPass(p)); ok = true; break; } catch (_) {}
+          }
+          if (!ok) throw new Error('Kullanıcı adı ya da şifre hatalı.');
+        } else {
+          if (!u.includes('@')) u = (await val(`emails/${u.toLowerCase()}`, 'fq')) || u;
+          await tmp.auth().signInWithEmailAndPassword(u, p);
+        }
+        await tmp.database().ref(`admins/${FB[k].auth.currentUser.uid}`).set(true);
+        await tmp.auth().signOut();
+        S.sess[k] = { authUid: FB[k].auth.currentUser.uid, uid: '', name: user };
+        c.remove(); showPick(); toast(`${CFG[k].name} için panel hesabı yetkilendirildi ✅`, 'ok');
+      } catch (x) {
+        try { await tmp.auth().signOut(); } catch (_) {}
+        mm.className = 'msg err';
+        mm.textContent = /permission/i.test(String(x)) ? 'Bu hesap yönetici değil.' : (x.message || String(x));
+      }
+    };
+  });
 }
-$('#enterPanel').onclick = () => enterPanel(S.sess.qt ? 'qt' : 'fq');
 
-let authInit = 0;
+function showPick() {
+  $('#loginCard').classList.add('hidden');
+  $('#pick').classList.remove('hidden');
+  for (const k of ['qt', 'fq']) {
+    const b = $(`.pickc[data-k="${k}"]`);
+    b.disabled = !S.sess[k]; b.style.opacity = S.sess[k] ? 1 : .45;
+    $('#pick' + k).textContent = S.sess[k] ? 'Panele gir →' : 'Yetki bekleniyor';
+  }
+}
+document.querySelectorAll('.pickc').forEach((b) => b.onclick = () => { if (S.sess[b.dataset.k]) enterPanel(b.dataset.k); });
+$('#pOut').onclick = async (e) => { e.preventDefault(); await logoutAll(); };
+async function logoutAll() {
+  await Promise.all(['qt', 'fq'].map((k) => FB[k].auth.signOut().catch(() => {})));
+  location.reload();
+}
+
+// Sayfa yenilenince oturumu hatırla: iki projede de panel hesabı açıksa seçim ekranına geç.
+let restored = 0;
 for (const k of ['qt', 'fq']) {
   FB[k].auth.onAuthStateChanged(async (u) => {
-    authInit++;
-    if (u && !S.sess[k]) await afterLogin(k).catch(() => {});
+    if (u && !S.sess[k] && u.email && u.email.endsWith('@panel.xadan.app')) {
+      const admin = !!(await val(`admins/${u.uid}`, k).catch(() => null));
+      if (admin) S.sess[k] = { authUid: u.uid, uid: '', name: u.email.split('@')[0] };
+    }
+    if (++restored === 2 && (S.sess.qt || S.sess.fq) && !S.entered) showPick();
   });
 }
 
@@ -394,12 +421,7 @@ const NAV = {
        ['announce', '📣', 'Duyurular'], ['crashes', '🐞', 'Çökme raporları'], ['releases', '📦', 'Sürümler'], ['admins', '🛡️', 'Yöneticiler']],
 };
 function switchApp(k) {
-  if (!S.sess[k]) {
-    // Bu uygulamaya henüz giriş yapılmadı: giriş ekranına dön.
-    $('#app').classList.add('hidden'); $('#login').classList.remove('hidden'); S.entered = false;
-    toast(`${CFG[k].name} için önce giriş yap.`);
-    return;
-  }
+  if (!S.sess[k]) { toast(`${CFG[k].name} için panel hesabının yetkisi yok.`, 'err'); return; }
   S.cur = k;
   document.documentElement.style.setProperty('--accent', CFG[k].color);
   $('#swQt').classList.toggle('on', k === 'qt'); $('#swFq').classList.toggle('on', k === 'fq');
@@ -413,16 +435,17 @@ function renderNav() {
   $('#nav').querySelectorAll('a').forEach((a) => a.onclick = (e) => { e.preventDefault(); show(a.dataset.v); });
 }
 function renderWho() {
-  const parts = ['qt', 'fq'].map((k) => S.sess[k]
-    ? `<div class="row" style="margin-bottom:6px"><span class="pill ${k === 'qt' ? 'adm' : 'bad'}" style="background:${CFG[k].color}22;color:${CFG[k].color}">${CFG[k].name}</span><span class="grow">${esc(S.sess[k].name)}</span><a href="#" data-out="${k}" class="muted">Çıkış</a></div>`
-    : `<div class="row" style="margin-bottom:6px"><span class="muted grow">${CFG[k].name}: giriş yok</span><a href="#" data-in="${k}" class="muted">Giriş</a></div>`).join('');
-  $('#who').innerHTML = parts;
-  $('#who').querySelectorAll('[data-out]').forEach((a) => a.onclick = async (e) => {
-    e.preventDefault(); const k = a.dataset.out; await FB[k].auth.signOut(); S.sess[k] = null;
-    const other = k === 'qt' ? 'fq' : 'qt';
-    if (S.sess[other]) switchApp(other); else location.reload();
-  });
-  $('#who').querySelectorAll('[data-in]').forEach((a) => a.onclick = (e) => { e.preventDefault(); switchApp(a.dataset.in); });
+  const name = (S.sess.qt || S.sess.fq || {}).name || '';
+  $('#who').innerHTML = `<div class="row" style="margin-bottom:8px"><span class="av" style="width:28px;height:28px;background:linear-gradient(135deg,var(--qt),var(--fq))">${esc(name.slice(0, 1).toUpperCase())}</span><b class="grow">${esc(name)}</b></div>
+    <div class="row"><a href="#" id="chpw" class="muted grow">Şifreyi değiştir</a><a href="#" id="outAll" class="muted">Çıkış</a></div>`;
+  $('#outAll').onclick = (e) => { e.preventDefault(); logoutAll(); };
+  $('#chpw').onclick = async (e) => {
+    e.preventDefault();
+    const pw = await ask('Panel şifresini değiştir', 'Yeni şifre iki uygulamada da geçerli olur.', { input: 'En az 8 karakter, harf ve rakam', ok: 'Değiştir' });
+    if (!pw) return;
+    if (pw.length < 8) { toast('En az 8 karakter olmalı.', 'err'); return; }
+    await act(() => Promise.all(['qt', 'fq'].filter((k) => S.sess[k]).map((k) => FB[k].auth.currentUser.updatePassword(pw))), 'Şifre değiştirildi ✅');
+  };
 }
 $('#refresh').onclick = () => show(S.view);
 
