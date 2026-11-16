@@ -541,9 +541,9 @@ function usersOf(k = S.cur) {
 // YERLEŞİM
 // =====================================================================
 const NAV = {
-  qt: [['overview', '📊', 'Genel bakış'], ['users', '👥', 'Kullanıcılar'], ['rooms', '💬', 'Odalar'],
+  qt: [['overview', '📊', 'Genel bakış'], ['users', '👥', 'Kullanıcılar'], ['rooms', '💬', 'Odalar'], ['dms', '✉️', 'Mesajlar'],
        ['reports', '🚩', 'Şikayetler'], ['announce', '📣', 'Duyurular'], ['crashes', '🐞', 'Çökme raporları'], ['export', '💾', 'Verileri indir'], ['releases', '📦', 'Sürümler']],
-  fq: [['overview', '📊', 'Genel bakış'], ['users', '👥', 'Kullanıcılar'], ['posts', '🖼️', 'Gönderiler'], ['stories', '⭕', 'Hikayeler'],
+  fq: [['overview', '📊', 'Genel bakış'], ['users', '👥', 'Kullanıcılar'], ['posts', '🖼️', 'Gönderiler'], ['stories', '⭕', 'Hikayeler'], ['dms', '✉️', 'Mesajlar'],
        ['reports', '🚩', 'Şikayetler'], ['announce', '📣', 'Duyurular'], ['crashes', '🐞', 'Çökme raporları'], ['export', '💾', 'Verileri indir'], ['releases', '📦', 'Sürümler']],
 };
 function switchApp(k) {
@@ -1256,6 +1256,97 @@ VIEWS.reports = {
     }).join('') || '<div class="empty">Açık şikayet yok 🎉</div>');
   },
 };
+
+// ---------------- Mesajlar (DM) ----------------
+const DM_NODE = () => (S.cur === 'qt' ? 'privateMessages' : 'chats');
+function dmField(k, m) {
+  if (k === 'qt') return { from: m.senderUid || '', name: m.sender || '', text: m.text || m.caption || '', ts: +m.timestamp || 0, type: m.type || 'text', media: m.imageData || m.fileData || '' };
+  return { from: m.from || '', name: '', text: m.text || '', ts: +m.ts || 0, type: m.type || 'text', media: m.url || '', hasMedia: m.media === true };
+}
+VIEWS.dms = {
+  async mount(el) {
+    el.innerHTML = `<div class="toolbar"><input id="dq" placeholder="Kişiye göre ara…"><span class="muted" id="dc"></span></div>
+      <div class="tbl"><table><thead><tr><th>Sohbet</th><th>Mesaj</th><th>Son mesaj</th><th></th></tr></thead><tbody id="db"><tr><td colspan="4">${LOADING}</td></tr></tbody></table></div>`;
+    const k = S.cur, node = DM_NODE();
+    let keys;
+    try { keys = await shallow(node, k); }
+    catch (e) { patch($('#db'), `<tr><td colspan="4"><div class="empty">Okunamadı: ${esc(e.message || e)}<br><span class="muted">Güncel kuralları Firebase'e yapıştırdığından emin ol.</span></div></td></tr>`); return; }
+    const names = Object.fromEntries((usersOf(k) || []).map((u) => [u.uid, u.name]));
+    const threads = await Promise.all(keys.map(async (key) => {
+      const parts = key.split('_');
+      let count = 0, last = null;
+      try {
+        count = (await shallow(`${node}/${key}/messages`, k)).length;
+        const s = await db(k).ref(`${node}/${key}/messages`).orderByKey().limitToLast(1).get();
+        s.forEach((c) => { last = c.val(); });
+      } catch (_) {}
+      const lf = last ? dmField(k, last) : null;
+      return { key, names: parts.map((u) => names[u] || u.slice(0, 6)), count, last: lf, ts: lf ? lf.ts : 0 };
+    }));
+    threads.sort((x, y) => y.ts - x.ts);
+    const draw = () => {
+      const q = $('#dq').value.trim().toLowerCase();
+      const list = threads.filter((t) => !q || t.names.some((n) => n.toLowerCase().includes(q)));
+      $('#dc').textContent = `${list.length} sohbet`;
+      patch($('#db'), list.map((t) => {
+        const preview = t.last ? (t.last.text || (t.last.type === 'voice' ? '🎤 Sesli' : t.last.type === 'video' ? '🎥 Video' : t.last.type === 'image' ? '📷 Foto' : '')) : '';
+        const who = t.last && t.last.from ? (names[t.last.from] || '') : '';
+        return `<tr class="click" data-k="${esc(t.key)}">
+          <td><b>${esc(t.names[0])}</b> <span class="muted">↔</span> <b>${esc(t.names[1])}</b></td>
+          <td>${t.count}</td>
+          <td class="muted">${who ? esc(who) + ': ' : ''}${esc(String(preview).slice(0, 40))}<div style="font-size:11px">${ago(t.ts)}</div></td>
+          <td style="text-align:right"><button class="btn sm" data-open="${esc(t.key)}">Aç</button> <button class="btn sm danger" data-del="${esc(t.key)}">Sil</button></td></tr>`;
+      }).join('') || '<tr><td colspan="4" class="empty">Sohbet yok</td></tr>');
+    };
+    $('#dq').oninput = draw;
+    $('#db').onclick = async (e) => {
+      const d = e.target.closest('[data-del]');
+      if (d) {
+        const key = d.dataset.del;
+        if (!(await ask('Sohbeti sil', 'Bu özel sohbetteki tüm mesajlar kalıcı olarak silinecek.', { ok: 'Sil', danger: true }))) return;
+        if (await act(() => db(k).ref(`${node}/${key}`).remove(), 'Sohbet silindi')) {
+          const i = threads.findIndex((x) => x.key === key);
+          if (i >= 0) threads.splice(i, 1);
+          draw();
+        }
+        return;
+      }
+      const row = e.target.closest('tr[data-k]');
+      if (row) dmThread(k, row.dataset.k, names);
+    };
+    draw();
+  },
+};
+
+function dmThread(k, key, names) {
+  const node = DM_NODE();
+  const ref = db(k).ref(`${node}/${key}/messages`).orderByKey().limitToLast(120);
+  const title = key.split('_').map((u) => names[u] || u.slice(0, 6)).join(' ↔ ');
+  const o = dialog(`<div class="row"><h2 class="grow">${esc(title)}</h2><span class="live"><i></i>Canlı</span></div><div class="muted">Son 120 mesaj</div><div class="msgs" id="dml">${LOADING}</div><div class="actions"><button class="btn" data-x>Kapat</button></div>`, true, () => ref.off('value', cb));
+  $('[data-x]', o).onclick = () => o.close();
+  const render = (f, name) => {
+    let body = esc(f.text);
+    if (f.media && String(f.media).startsWith('data:image')) body += `<img src="${esc(f.media)}">`;
+    else if (f.type === 'video' && String(f.media).startsWith('data:video')) body += `<video src="${esc(f.media)}" controls></video>`;
+    else if ((f.type === 'voice' || f.type === 'audio') && String(f.media).startsWith('data:audio')) body += `<audio src="${esc(f.media)}" controls></audio>`;
+    else if (f.type === 'video' || f.hasMedia) body += '<div class="muted">🎥 Video</div>';
+    else if (f.type === 'voice') body += '<div class="muted">🎤 Sesli mesaj</div>';
+    else if (f.type === 'image') body += '<div class="muted">📷 Fotoğraf</div>';
+    return `<b>${esc(name)}</b> <span class="muted" style="font-size:12px">${fmt(f.ts)}</span><br>${body}`;
+  };
+  const cb = (snap) => {
+    const rows = []; snap.forEach((c) => rows.push([c.key, c.val() || {}]));
+    const box = $('#dml', o); const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+    patch(box, rows.map(([mid, m]) => {
+      const f = dmField(k, m);
+      const name = f.name || names[f.from] || f.from.slice(0, 6);
+      return `<div class="m1"><div class="t">${render(f, name)}</div><button class="btn sm danger" data-d="${esc(mid)}">🗑️</button></div>`;
+    }).join('') || '<div class="empty">Mesaj yok</div>');
+    if (atBottom) box.scrollTop = box.scrollHeight;
+  };
+  ref.on('value', cb, (e) => patch($('#dml', o), `<div class="empty">${esc(e.message)}</div>`));
+  $('#dml', o).onclick = (e) => { const b = e.target.closest('[data-d]'); if (b) act(() => db(k).ref(`${node}/${key}/messages/${b.dataset.d}`).remove(), 'Mesaj silindi'); };
+}
 
 // ---------------- Duyurular ----------------
 VIEWS.announce = {
