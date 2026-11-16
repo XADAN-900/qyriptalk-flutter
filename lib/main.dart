@@ -186,7 +186,7 @@ class _Gate extends StatelessWidget {
     if (app.restoring) {
       return Scaffold(
         body: Center(
-          child: Image.asset('assets/logo_splash.png', width: 120, height: 120),
+          child: Image.asset('assets/logo_splash.png', width: 128, height: 128),
         ),
       );
     }
