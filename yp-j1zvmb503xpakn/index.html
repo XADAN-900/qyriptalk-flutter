@@ -313,8 +313,14 @@ async function panelSignIn(k, email, pass) {
     try { await auth.createUserWithEmailAndPassword(email, pass); }
     catch (y) {
       if (authOff(y)) throw new Error(AUTH_OFF_MSG(k));
-      if ((y.code || '').includes('email-already-in-use')) throw new Error('Şifre hatalı.');
-      throw y;
+      if (!(y.code || '').includes('email-already-in-use')) throw y;
+      // Şifre eşleşmedi: FlinQ'da gömülü anahtar bu şifreyle açılıyorsa panel hesabının
+      // şifresini bu şifreye döndür (admin123'ü geri getirir) ve gir.
+      if (k === 'fq' && await recoverFqPanel(email, pass)) {
+        await auth.signInWithEmailAndPassword(email, pass);
+      } else {
+        throw new Error('Şifre hatalı.');
+      }
     }
   }
 }
@@ -825,6 +831,22 @@ async function saBearer(sa, fresh = false) {
   // Yedek yol: doğrudan imzalı anahtar
   return signJwt(sa, { iss: sa.client_email, sub: sa.client_email, aud: 'https://identitytoolkit.googleapis.com/', iat: now, exp: now + 3600 });
 }
+/** Gömülü anahtar girilen şifreyle açılıyorsa panel hesabının şifresini o şifreye sıfırlar. */
+async function recoverFqPanel(email, pass) {
+  try {
+    const sa = await openEmbedded(pass).catch(() => null);
+    if (!sa) return false;
+    SA_MEM = sa;
+    const found = await fqAdminCall('lookup', { email: [email] });
+    const localId = found && found.users && found.users[0] && found.users[0].localId;
+    if (!localId) return false;
+    await fqAdminCall('update', { localId, password: pass });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 async function fqAdminCall(op, body) {
   const sa = getSA(); if (!sa) throw new Error('Anahtar yok');
   const url = `https://identitytoolkit.googleapis.com/v1/projects/${sa.project_id}/accounts:${op}`;
