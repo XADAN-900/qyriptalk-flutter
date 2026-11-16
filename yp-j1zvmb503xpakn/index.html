@@ -390,13 +390,14 @@ function enterPanel(k) {
 const L = { qt: null, fq: null };
 function startLive(k) {
   if (L[k]) return;
-  const st = L[k] = { users: null, bans: {}, admins: {}, crashes: {}, ann: {}, stories: {}, rooms: {}, roomMeta: {}, posts: [], postMeta: {}, err: null, ok: true };
+  const st = L[k] = { users: null, bans: {}, admins: {}, crashes: {}, reports: {}, ann: {}, stories: {}, rooms: {}, roomMeta: {}, posts: [], postMeta: {}, err: null, ok: true };
   const d = db(k);
   const on = (path, key, q) => (q || d.ref(path)).on('value', (s) => { st[key] = s.val() || {}; st.ok = true; changed(k, key); }, (e) => { st.err = e.message; st.ok = false; changed(k, 'err'); });
   on('users', 'users');
   on('bans', 'bans');
   on('admins', 'admins');
   on('crashReports', 'crashes');
+  on('reports', 'reports');
   on('announcements', 'ann', d.ref('announcements').orderByKey().limitToLast(30));
   if (k === 'fq') on('stories', 'stories');
   const conn = d.ref('.info/connected');
@@ -434,6 +435,7 @@ let pending = null;
 function changed(k, what) {
   if (S.cur !== k || !S.entered) return;
   if (what === 'err') liveBadge();
+  if (what === 'reports') renderNav();
   clearTimeout(pending);
   pending = setTimeout(() => { const v = VIEWS[S.view]; v && v.update && v.update(what); }, 120);
 }
@@ -465,9 +467,9 @@ function usersOf(k = S.cur) {
 // =====================================================================
 const NAV = {
   qt: [['overview', '📊', 'Genel bakış'], ['users', '👥', 'Kullanıcılar'], ['rooms', '💬', 'Odalar'],
-       ['announce', '📣', 'Duyurular'], ['crashes', '🐞', 'Çökme raporları'], ['export', '💾', 'Verileri indir'], ['releases', '📦', 'Sürümler']],
+       ['reports', '🚩', 'Şikayetler'], ['announce', '📣', 'Duyurular'], ['crashes', '🐞', 'Çökme raporları'], ['export', '💾', 'Verileri indir'], ['releases', '📦', 'Sürümler']],
   fq: [['overview', '📊', 'Genel bakış'], ['users', '👥', 'Kullanıcılar'], ['posts', '🖼️', 'Gönderiler'], ['stories', '⭕', 'Hikayeler'],
-       ['announce', '📣', 'Duyurular'], ['crashes', '🐞', 'Çökme raporları'], ['export', '💾', 'Verileri indir'], ['releases', '📦', 'Sürümler']],
+       ['reports', '🚩', 'Şikayetler'], ['announce', '📣', 'Duyurular'], ['crashes', '🐞', 'Çökme raporları'], ['export', '💾', 'Verileri indir'], ['releases', '📦', 'Sürümler']],
 };
 function switchApp(k) {
   if (!S.sess[k]) { toast(`${CFG[k].name}: ${S.errs[k] || 'giriş yapılamadı'}`, 'err'); return; }
@@ -481,7 +483,8 @@ function switchApp(k) {
 $('#swQt').onclick = () => switchApp('qt');
 $('#swFq').onclick = () => switchApp('fq');
 function renderNav() {
-  $('#nav').innerHTML = NAV[S.cur].map(([id, ico, t]) => `<a href="#${id}" data-v="${id}" class="${S.view === id ? 'on' : ''}"><span class="ico">${ico}</span>${t}</a>`).join('');
+  const rc = L[S.cur] ? Object.keys(L[S.cur].reports || {}).length : 0;
+  $('#nav').innerHTML = NAV[S.cur].map(([id, ico, t]) => `<a href="#${id}" data-v="${id}" class="${S.view === id ? 'on' : ''}"><span class="ico">${ico}</span><span class="grow">${t}</span>${id === 'reports' && rc ? `<span class="pill bad" style="margin:0">${rc}</span>` : ''}</a>`).join('');
   $('#nav').querySelectorAll('a').forEach((a) => a.onclick = (e) => { e.preventDefault(); show(a.dataset.v); });
 }
 function renderWho() {
@@ -579,7 +582,7 @@ VIEWS.overview = {
       stats.push([st.posts.length, 'Gönderi', ''], [sc, 'Aktif hikaye', ''], [users.filter((u) => u.verified).length, 'Mavi tikli', '']);
       $('#c1t').textContent = 'Yeni gönderiler (son 14 gün)';
     }
-    stats.push([Object.keys(st.crashes).length, 'Çökme raporu', '']);
+    stats.push([Object.keys(st.reports).length, 'Açık şikayet', ''], [Object.keys(st.crashes).length, 'Çökme raporu', '']);
     patch($('#ovs'), stats.map(([v, l, d]) => `<div class="stat"><div class="v">${v.toLocaleString('tr-TR')}</div><div class="l">${l}</div>${d ? `<div class="d">${d}</div>` : ''}</div>`).join(''));
     lineChart('c1', days14.map(shortDay), days14.map((d) => act14[d]));
     donut('c2', online, users.length - online);
@@ -989,6 +992,48 @@ VIEWS.stories = {
         <div class="b"><b>@${esc(names[s.owner] || '?')}</b> <span class="muted">· ${ago(+s.timestamp)}</span><div class="cap muted">${esc(s.caption || '') || '&nbsp;'}</div>
         <div class="row" style="margin-top:6px"><span class="muted grow">👁 ${Object.keys(s.viewers || {}).length}</span>${isVid ? '<button class="btn sm" data-play>İzle</button>' : ''}<button class="btn sm danger" data-del>Sil</button></div></div></div>`;
     }).join('') || (st.users ? '<div class="empty">Aktif hikaye yok</div>' : waitMsg()));
+  },
+};
+
+// ---------------- Şikayetler ----------------
+const REPORT_TYPE = { message: 'Mesaj', post: 'Gönderi', user: 'Kullanıcı', comment: 'Yorum' };
+VIEWS.reports = {
+  mount(el) {
+    el.innerHTML = `<div class="toolbar"><span class="muted grow" id="rpc"></span></div><div id="rpl"></div>`;
+    $('#rpl').onclick = async (e) => {
+      const b = e.target.closest('[data-a]'); if (!b) return;
+      const id = b.closest('[data-r]').dataset.r, r = L[S.cur].reports[id] || {};
+      const a = b.dataset.a;
+      if (a === 'close') act(() => db().ref(`reports/${id}`).remove(), 'Şikayet kapatıldı');
+      if (a === 'del') {
+        if (!(await ask('İçeriği sil', 'Şikayet edilen içerik kalıcı olarak silinecek.', { ok: 'Sil', danger: true }))) return;
+        act(async () => { await db().ref(r.path).remove(); await db().ref(`reports/${id}`).remove(); }, 'İçerik silindi');
+      }
+      if (a === 'ban') {
+        const u = (usersOf() || []).find((x) => x.uid === r.targetUid);
+        if (u) { if (await toggleBan(S.cur, u)) db().ref(`reports/${id}`).remove(); }
+        else toast('Kullanıcı bulunamadı (silinmiş olabilir).', 'err');
+      }
+      if (a === 'user') userDetail(r.targetUid);
+    };
+  },
+  update() {
+    const users = Object.fromEntries((usersOf() || []).map((u) => [u.uid, u]));
+    const list = Object.entries(L[S.cur].reports).map(([id, r]) => ({ id, ...(r || {}) })).sort((a, b) => (+b.ts || 0) - (+a.ts || 0));
+    $('#rpc').textContent = list.length ? `${list.length} açık şikayet` : '';
+    patch($('#rpl'), list.map((r) => {
+      const tu = users[r.targetUid];
+      return `<div class="card" style="margin-bottom:10px" data-r="${esc(r.id)}">
+        <div class="row wrap"><span class="pill bad">${esc(REPORT_TYPE[r.type] || r.type)}</span><b class="grow">${esc(r.reason)}</b><span class="muted">${ago(+r.ts)}</span></div>
+        <div class="row" style="margin:10px 0">${tu ? avatar(tu.name, tu.photo, 30) : ''}<div class="grow"><b>${esc(tu ? tu.name : r.targetName || 'silinmiş kullanıcı')}</b> ${tu && tu.banned ? '<span class="pill bad">askıda</span>' : ''}<div class="muted" style="font-size:12px">Şikayet eden: ${esc(r.fromName || '?')}</div></div></div>
+        ${r.preview ? `<div class="m1"><div class="t">${esc(r.preview)}</div></div>` : ''}
+        <div class="row wrap" style="margin-top:10px">
+          ${r.path ? '<button class="btn sm danger" data-a="del">🗑️ İçeriği sil</button>' : ''}
+          ${tu && !tu.banned ? '<button class="btn sm danger" data-a="ban">⛔ Kullanıcıyı askıya al</button>' : ''}
+          ${tu ? '<button class="btn sm" data-a="user">👤 Kullanıcıyı aç</button>' : ''}
+          <button class="btn sm ok" data-a="close">✓ Kapat</button>
+        </div></div>`;
+    }).join('') || '<div class="empty">Açık şikayet yok 🎉</div>');
   },
 };
 
