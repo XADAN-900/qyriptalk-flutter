@@ -289,19 +289,26 @@ async function act(fn, okMsg) {
 // Firebase Authentication doğrular). Kullanıcı adı -> gizli e-posta.
 const panelEmail = (u) => `${u.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '')}@panel.xadan.app`;
 
+const authOff = (x) => /operation-not-allowed|configuration-not-found|CONFIGURATION_NOT_FOUND/.test(`${x.code} ${x.message}`);
+const AUTH_OFF_MSG = (k) => `Firebase'de ${CFG[k].name} projesinde giriş sistemi kapalı. Firebase Console → ${CFG[k].fb.projectId} → Authentication → Sign-in method → Email/Password → Etkinleştir.`;
+
 async function panelSignIn(k, email, pass) {
   const auth = FB[k].auth;
   try {
     await auth.signInWithEmailAndPassword(email, pass);
   } catch (x) {
     const c = x.code || '';
-    if (c === 'auth/operation-not-allowed') throw new Error(`${CFG[k].name}: Firebase'de Email/Password girişi açık değil.`);
+    if (authOff(x)) throw new Error(AUTH_OFF_MSG(k));
     if (c === 'auth/too-many-requests') throw new Error('Çok fazla deneme yapıldı. Biraz bekle.');
     if (!/user-not-found|invalid-credential|invalid-login|wrong-password/.test(c)) throw x;
-    // Hesap yoksa ve henüz hiç yönetici yoksa (ilk kurulum) panel hesabını oluştur.
-    const anyAdmin = await db(k).ref('admins').get().then((s) => s.exists()).catch(() => true);
-    if (anyAdmin) throw new Error('Kullanıcı adı ya da şifre hatalı.');
-    await auth.createUserWithEmailAndPassword(email, pass);
+    // Panel hesabı bu projede henüz yok: oluştur (yetkiyi aşağıda ilk kurulum ya da yönetici onayı verir).
+    try {
+      await auth.createUserWithEmailAndPassword(email, pass);
+    } catch (y) {
+      if (authOff(y)) throw new Error(AUTH_OFF_MSG(k));
+      if ((y.code || '').includes('email-already-in-use')) throw new Error('Şifre hatalı.');
+      throw y;
+    }
   }
   const uid = auth.currentUser.uid;
   let admin = !!(await val(`admins/${uid}`, k).catch(() => null));
@@ -320,9 +327,10 @@ $('#pForm').onsubmit = async (e) => {
   if (pass.length < 6) { m.className = 'msg err'; m.textContent = 'Şifre en az 6 karakter olmalı.'; return; }
   const email = panelEmail(user);
   const res = {}, errs = [];
+  S.errs = {};
   for (const k of ['qt', 'fq']) {
     try { res[k] = await panelSignIn(k, email, pass); }
-    catch (x) { res[k] = null; errs.push(x.message || String(x)); }
+    catch (x) { res[k] = null; S.errs[k] = x.message || String(x); errs.push(`${CFG[k].name}: ${S.errs[k]}`); }
   }
   for (const k of ['qt', 'fq']) if (res[k]) S.sess[k] = { authUid: FB[k].auth.currentUser.uid, uid: '', name: user };
   const notAdmin = ['qt', 'fq'].filter((k) => res[k] === false);
@@ -383,7 +391,8 @@ function showPick() {
   for (const k of ['qt', 'fq']) {
     const b = $(`.pickc[data-k="${k}"]`);
     b.disabled = !S.sess[k]; b.style.opacity = S.sess[k] ? 1 : .45;
-    $('#pick' + k).textContent = S.sess[k] ? 'Panele gir →' : 'Yetki bekleniyor';
+    const err = (S.errs || {})[k];
+    $('#pick' + k).innerHTML = S.sess[k] ? 'Panele gir →' : (err ? `<span style="color:#ff8a8a">${esc(err)}</span>` : 'Yetki bekleniyor: yukarıdan onayla');
   }
 }
 document.querySelectorAll('.pickc').forEach((b) => b.onclick = () => { if (S.sess[b.dataset.k]) enterPanel(b.dataset.k); });
