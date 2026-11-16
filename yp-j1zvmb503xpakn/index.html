@@ -1265,13 +1265,17 @@ function dmField(k, m) {
 }
 VIEWS.dms = {
   async mount(el) {
-    el.innerHTML = `<div class="toolbar"><input id="dq" placeholder="Kişiye göre ara…"><span class="muted" id="dc"></span></div>
-      <div class="tbl"><table><thead><tr><th>Sohbet</th><th>Mesaj</th><th>Son mesaj</th><th></th></tr></thead><tbody id="db"><tr><td colspan="4">${LOADING}</td></tr></tbody></table></div>`;
+    el.innerHTML = `<div class="toolbar">
+        <input id="dq" placeholder="Ara (kişi veya mesaj)…">
+        <button id="dmode" class="btn sm">📨 Tüm mesajlar</button>
+        <span class="muted" id="dc"></span></div>
+      <div class="tbl"><table id="dtab"><thead id="dhead"><tr><th>Sohbet</th><th>Mesaj</th><th>Son mesaj</th><th></th></tr></thead><tbody id="db"><tr><td colspan="4">${LOADING}</td></tr></tbody></table></div>`;
     const k = S.cur, node = DM_NODE();
     let keys;
     try { keys = await shallow(node, k); }
     catch (e) { patch($('#db'), `<tr><td colspan="4"><div class="empty">Okunamadı: ${esc(e.message || e)}<br><span class="muted">Güncel kuralları Firebase'e yapıştırdığından emin ol.</span></div></td></tr>`); return; }
     const names = Object.fromEntries((usersOf(k) || []).map((u) => [u.uid, u.name]));
+    const nm = (u) => names[u] || u.slice(0, 6);
     const threads = await Promise.all(keys.map(async (key) => {
       const parts = key.split('_');
       let count = 0, last = null;
@@ -1281,25 +1285,73 @@ VIEWS.dms = {
         s.forEach((c) => { last = c.val(); });
       } catch (_) {}
       const lf = last ? dmField(k, last) : null;
-      return { key, names: parts.map((u) => names[u] || u.slice(0, 6)), count, last: lf, ts: lf ? lf.ts : 0 };
+      return { key, parts, names: parts.map(nm), count, last: lf, ts: lf ? lf.ts : 0 };
     }));
     threads.sort((x, y) => y.ts - x.ts);
-    const draw = () => {
+
+    let flat = false, allMsgs = null;
+    const prev = (f) => f.text || (f.type === 'voice' ? '🎤 Sesli mesaj' : f.type === 'video' ? '🎥 Video' : f.type === 'image' ? '📷 Fotoğraf' : (f.hasMedia ? '🎥 Medya' : ''));
+
+    const drawThreads = () => {
+      $('#dhead').innerHTML = '<tr><th>Sohbet</th><th>Mesaj</th><th>Son mesaj</th><th></th></tr>';
       const q = $('#dq').value.trim().toLowerCase();
       const list = threads.filter((t) => !q || t.names.some((n) => n.toLowerCase().includes(q)));
       $('#dc').textContent = `${list.length} sohbet`;
       patch($('#db'), list.map((t) => {
-        const preview = t.last ? (t.last.text || (t.last.type === 'voice' ? '🎤 Sesli' : t.last.type === 'video' ? '🎥 Video' : t.last.type === 'image' ? '📷 Foto' : '')) : '';
-        const who = t.last && t.last.from ? (names[t.last.from] || '') : '';
+        const who = t.last && t.last.from ? nm(t.last.from) : '';
         return `<tr class="click" data-k="${esc(t.key)}">
           <td><b>${esc(t.names[0])}</b> <span class="muted">↔</span> <b>${esc(t.names[1])}</b></td>
           <td>${t.count}</td>
-          <td class="muted">${who ? esc(who) + ': ' : ''}${esc(String(preview).slice(0, 40))}<div style="font-size:11px">${ago(t.ts)}</div></td>
+          <td class="muted">${who ? esc(who) + ': ' : ''}${esc(String(prev(t.last || {})).slice(0, 40))}<div style="font-size:11px">${ago(t.ts)}</div></td>
           <td style="text-align:right"><button class="btn sm" data-open="${esc(t.key)}">Aç</button> <button class="btn sm danger" data-del="${esc(t.key)}">Sil</button></td></tr>`;
       }).join('') || '<tr><td colspan="4" class="empty">Sohbet yok</td></tr>');
     };
-    $('#dq').oninput = draw;
+
+    const loadAll = async () => {
+      patch($('#db'), `<tr><td colspan="4">${LOADING}</td></tr>`);
+      const per = await Promise.all(threads.map(async (t) => {
+        try {
+          const s = await db(k).ref(`${node}/${t.key}/messages`).orderByKey().limitToLast(60).get();
+          const out = [];
+          s.forEach((c) => { const f = dmField(k, c.val() || {}); out.push({ key: t.key, mid: c.key, pair: `${t.names[0]} ↔ ${t.names[1]}`, who: f.name || nm(f.from), f }); });
+          return out;
+        } catch (_) { return []; }
+      }));
+      allMsgs = per.flat().sort((a, b) => b.f.ts - a.f.ts);
+    };
+
+    const drawFlat = () => {
+      $('#dhead').innerHTML = '<tr><th>Sohbet</th><th>Gönderen</th><th>Mesaj</th><th>Zaman</th><th></th></tr>';
+      const q = $('#dq').value.trim().toLowerCase();
+      const list = (allMsgs || []).filter((m) => !q || m.pair.toLowerCase().includes(q) || m.who.toLowerCase().includes(q) || (m.f.text || '').toLowerCase().includes(q));
+      $('#dc').textContent = `${list.length} mesaj`;
+      patch($('#db'), list.map((m) => `<tr>
+          <td class="muted" style="white-space:nowrap">${esc(m.pair)}</td>
+          <td><b>${esc(m.who)}</b></td>
+          <td>${esc(String(prev(m.f)).slice(0, 120))}</td>
+          <td class="muted" style="white-space:nowrap;font-size:12px">${fmt(m.f.ts)}</td>
+          <td style="text-align:right"><button class="btn sm danger" data-dm="${esc(m.key)}" data-mid="${esc(m.mid)}">🗑️</button></td></tr>`).join('') || '<tr><td colspan="5" class="empty">Mesaj yok</td></tr>');
+    };
+
+    const render = () => flat ? drawFlat() : drawThreads();
+
+    $('#dmode').onclick = async () => {
+      flat = !flat;
+      $('#dmode').textContent = flat ? '📁 Sohbetler' : '📨 Tüm mesajlar';
+      if (flat && !allMsgs) await loadAll();
+      render();
+    };
+    $('#dq').oninput = render;
     $('#db').onclick = async (e) => {
+      const dm = e.target.closest('[data-dm]');
+      if (dm) {
+        if (!(await ask('Mesajı sil', 'Bu mesaj kalıcı olarak silinecek.', { ok: 'Sil', danger: true }))) return;
+        if (await act(() => db(k).ref(`${node}/${dm.dataset.dm}/messages/${dm.dataset.mid}`).remove(), 'Mesaj silindi')) {
+          allMsgs = (allMsgs || []).filter((x) => !(x.key === dm.dataset.dm && x.mid === dm.dataset.mid));
+          drawFlat();
+        }
+        return;
+      }
       const d = e.target.closest('[data-del]');
       if (d) {
         const key = d.dataset.del;
@@ -1307,14 +1359,14 @@ VIEWS.dms = {
         if (await act(() => db(k).ref(`${node}/${key}`).remove(), 'Sohbet silindi')) {
           const i = threads.findIndex((x) => x.key === key);
           if (i >= 0) threads.splice(i, 1);
-          draw();
+          drawThreads();
         }
         return;
       }
       const row = e.target.closest('tr[data-k]');
       if (row) dmThread(k, row.dataset.k, names);
     };
-    draw();
+    render();
   },
 };
 
