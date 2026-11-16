@@ -799,13 +799,9 @@ async function setFqPassword(u) {
     return true;
   } catch (x) {
     console.warn('setUserPassword:', x);
-    // 2) Yedek yol: bu bilgisayarda kayıtlı hizmet anahtarı.
-    if (getSA()) return act(() => fqAdminCall('update', { localId: u.uid, password: pw }), 'Şifre değiştirildi ✅');
-    const code = String(x && (x.code || x.message) || x);
-    toast(/permission|unauthenticated/i.test(code)
-      ? 'Firebase fonksiyonu bu hesaba izin vermedi: ' + code
-      : 'Firebase\'deki "setUserPassword" fonksiyonuna ulaşılamadı (' + code + ').', 'err');
-    return false;
+    // 2) Fonksiyon kurulu değilse: Google hizmet anahtarı (bu bilgisayarda bir kez seçilir).
+    if (!getSA() && !(await askServiceKey())) return false;
+    return act(() => fqAdminCall('update', { localId: u.uid, password: pw }), 'Şifre değiştirildi ✅');
   }
 }
 
