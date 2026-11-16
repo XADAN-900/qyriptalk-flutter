@@ -125,6 +125,17 @@ pre.crash{white-space:pre-wrap;word-break:break-word;background:#07080d;border:1
 .note{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);color:#fcd38d;border-radius:12px;padding:12px 14px;font-size:13px;margin-bottom:14px}
 
 .hamb{display:none;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:9px;width:38px;height:38px;font-size:18px;flex-shrink:0}
+.dmprev{max-width:min(48vw,340px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dialog .row{flex-wrap:wrap}
+.dialog h2{word-break:break-word;min-width:0}
+.m1 img,.m1 video,.m1 audio{max-width:100%}
+.m1 audio{width:230px;max-width:100%}
+.tbl table{min-width:520px}
+@media (max-width:820px){
+  .dmprev{max-width:44vw}
+  .m1{flex-wrap:wrap}
+  .toolbar{gap:8px}
+}
 @media (max-width:820px){
   aside{position:fixed;top:0;left:0;height:100%;width:270px;max-width:85vw;transform:translateX(-100%);transition:transform .25s ease;z-index:45;box-shadow:0 0 40px rgba(0,0,0,.5)}
   aside.open{transform:none}
@@ -1265,11 +1276,8 @@ function dmField(k, m) {
 }
 VIEWS.dms = {
   async mount(el) {
-    el.innerHTML = `<div class="toolbar">
-        <input id="dq" placeholder="Ara (kişi veya mesaj)…">
-        <button id="dmode" class="btn sm">📨 Tüm mesajlar</button>
-        <span class="muted" id="dc"></span></div>
-      <div class="tbl"><table id="dtab"><thead id="dhead"><tr><th>Sohbet</th><th>Mesaj</th><th>Son mesaj</th><th></th></tr></thead><tbody id="db"><tr><td colspan="4">${LOADING}</td></tr></tbody></table></div>`;
+    el.innerHTML = `<div class="toolbar"><input id="dq" placeholder="Kişiye göre ara…"><span class="muted" id="dc"></span></div>
+      <div class="tbl"><table><thead><tr><th>Sohbet</th><th>Mesaj</th><th>Son mesaj</th><th></th></tr></thead><tbody id="db"><tr><td colspan="4">${LOADING}</td></tr></tbody></table></div>`;
     const k = S.cur, node = DM_NODE();
     let keys;
     try { keys = await shallow(node, k); }
@@ -1285,15 +1293,11 @@ VIEWS.dms = {
         s.forEach((c) => { last = c.val(); });
       } catch (_) {}
       const lf = last ? dmField(k, last) : null;
-      return { key, parts, names: parts.map(nm), count, last: lf, ts: lf ? lf.ts : 0 };
+      return { key, names: parts.map(nm), count, last: lf, ts: lf ? lf.ts : 0 };
     }));
     threads.sort((x, y) => y.ts - x.ts);
-
-    let flat = false, allMsgs = null;
     const prev = (f) => f.text || (f.type === 'voice' ? '🎤 Sesli mesaj' : f.type === 'video' ? '🎥 Video' : f.type === 'image' ? '📷 Fotoğraf' : (f.hasMedia ? '🎥 Medya' : ''));
-
-    const drawThreads = () => {
-      $('#dhead').innerHTML = '<tr><th>Sohbet</th><th>Mesaj</th><th>Son mesaj</th><th></th></tr>';
+    const draw = () => {
       const q = $('#dq').value.trim().toLowerCase();
       const list = threads.filter((t) => !q || t.names.some((n) => n.toLowerCase().includes(q)));
       $('#dc').textContent = `${list.length} sohbet`;
@@ -1302,56 +1306,12 @@ VIEWS.dms = {
         return `<tr class="click" data-k="${esc(t.key)}">
           <td><b>${esc(t.names[0])}</b> <span class="muted">↔</span> <b>${esc(t.names[1])}</b></td>
           <td>${t.count}</td>
-          <td class="muted">${who ? esc(who) + ': ' : ''}${esc(String(prev(t.last || {})).slice(0, 40))}<div style="font-size:11px">${ago(t.ts)}</div></td>
+          <td class="muted"><div class="dmprev">${who ? esc(who) + ': ' : ''}${esc(String(prev(t.last || {})).slice(0, 40))}</div><div style="font-size:11px">${ago(t.ts)}</div></td>
           <td style="text-align:right"><button class="btn sm" data-open="${esc(t.key)}">Aç</button> <button class="btn sm danger" data-del="${esc(t.key)}">Sil</button></td></tr>`;
       }).join('') || '<tr><td colspan="4" class="empty">Sohbet yok</td></tr>');
     };
-
-    const loadAll = async () => {
-      patch($('#db'), `<tr><td colspan="4">${LOADING}</td></tr>`);
-      const per = await Promise.all(threads.map(async (t) => {
-        try {
-          const s = await db(k).ref(`${node}/${t.key}/messages`).orderByKey().limitToLast(60).get();
-          const out = [];
-          s.forEach((c) => { const f = dmField(k, c.val() || {}); out.push({ key: t.key, mid: c.key, pair: `${t.names[0]} ↔ ${t.names[1]}`, who: f.name || nm(f.from), f }); });
-          return out;
-        } catch (_) { return []; }
-      }));
-      allMsgs = per.flat().sort((a, b) => b.f.ts - a.f.ts);
-    };
-
-    const drawFlat = () => {
-      $('#dhead').innerHTML = '<tr><th>Sohbet</th><th>Gönderen</th><th>Mesaj</th><th>Zaman</th><th></th></tr>';
-      const q = $('#dq').value.trim().toLowerCase();
-      const list = (allMsgs || []).filter((m) => !q || m.pair.toLowerCase().includes(q) || m.who.toLowerCase().includes(q) || (m.f.text || '').toLowerCase().includes(q));
-      $('#dc').textContent = `${list.length} mesaj`;
-      patch($('#db'), list.map((m) => `<tr>
-          <td class="muted" style="white-space:nowrap">${esc(m.pair)}</td>
-          <td><b>${esc(m.who)}</b></td>
-          <td>${esc(String(prev(m.f)).slice(0, 120))}</td>
-          <td class="muted" style="white-space:nowrap;font-size:12px">${fmt(m.f.ts)}</td>
-          <td style="text-align:right"><button class="btn sm danger" data-dm="${esc(m.key)}" data-mid="${esc(m.mid)}">🗑️</button></td></tr>`).join('') || '<tr><td colspan="5" class="empty">Mesaj yok</td></tr>');
-    };
-
-    const render = () => flat ? drawFlat() : drawThreads();
-
-    $('#dmode').onclick = async () => {
-      flat = !flat;
-      $('#dmode').textContent = flat ? '📁 Sohbetler' : '📨 Tüm mesajlar';
-      if (flat && !allMsgs) await loadAll();
-      render();
-    };
-    $('#dq').oninput = render;
+    $('#dq').oninput = draw;
     $('#db').onclick = async (e) => {
-      const dm = e.target.closest('[data-dm]');
-      if (dm) {
-        if (!(await ask('Mesajı sil', 'Bu mesaj kalıcı olarak silinecek.', { ok: 'Sil', danger: true }))) return;
-        if (await act(() => db(k).ref(`${node}/${dm.dataset.dm}/messages/${dm.dataset.mid}`).remove(), 'Mesaj silindi')) {
-          allMsgs = (allMsgs || []).filter((x) => !(x.key === dm.dataset.dm && x.mid === dm.dataset.mid));
-          drawFlat();
-        }
-        return;
-      }
       const d = e.target.closest('[data-del]');
       if (d) {
         const key = d.dataset.del;
@@ -1359,22 +1319,22 @@ VIEWS.dms = {
         if (await act(() => db(k).ref(`${node}/${key}`).remove(), 'Sohbet silindi')) {
           const i = threads.findIndex((x) => x.key === key);
           if (i >= 0) threads.splice(i, 1);
-          drawThreads();
+          draw();
         }
         return;
       }
       const row = e.target.closest('tr[data-k]');
       if (row) dmThread(k, row.dataset.k, names);
     };
-    render();
+    draw();
   },
 };
 
 function dmThread(k, key, names) {
   const node = DM_NODE();
-  const ref = db(k).ref(`${node}/${key}/messages`).orderByKey().limitToLast(120);
+  const ref = db(k).ref(`${node}/${key}/messages`).orderByKey().limitToLast(1000);
   const title = key.split('_').map((u) => names[u] || u.slice(0, 6)).join(' ↔ ');
-  const o = dialog(`<div class="row"><h2 class="grow">${esc(title)}</h2><span class="live"><i></i>Canlı</span></div><div class="muted">Son 120 mesaj</div><div class="msgs" id="dml">${LOADING}</div><div class="actions"><button class="btn" data-x>Kapat</button></div>`, true, () => ref.off('value', cb));
+  const o = dialog(`<div class="row"><h2 class="grow">${esc(title)}</h2><span class="live"><i></i>Canlı</span></div><div class="muted">Tüm mesajlar</div><div class="msgs" id="dml">${LOADING}</div><div class="actions"><button class="btn" data-x>Kapat</button></div>`, true, () => ref.off('value', cb));
   $('[data-x]', o).onclick = () => o.close();
   const render = (f, name) => {
     let body = esc(f.text);
