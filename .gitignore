@@ -26,3 +26,6 @@ key.properties
 .vscode/
 *.iml
 .DS_Store
+
+# CI sabit imza anahtarı (güncellemelerin çakışmaması için sürüm kontrolünde)
+!ci/release.jks

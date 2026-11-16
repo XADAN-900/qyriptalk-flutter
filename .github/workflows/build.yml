@@ -54,13 +54,17 @@ jobs:
           if [ -n "$KS_B64" ]; then
             echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/app.jks"
             echo "APP_KEYSTORE_FILE=$RUNNER_TEMP/app.jks" >> "$GITHUB_ENV"
+          elif [ -f ci/release.jks ]; then
+            # Secret yoksa repoya gömülü sabit anahtarı kullan: her derleme aynı
+            # anahtarla imzalanır, güncellemeler çakışmadan kurulur.
+            echo "APP_KEYSTORE_FILE=$PWD/ci/release.jks" >> "$GITHUB_ENV"
           fi
 
       - name: Build APK
         env:
-          APP_KEYSTORE_PASSWORD: ${{ secrets.QT_KEYSTORE_PASSWORD }}
+          APP_KEYSTORE_PASSWORD: ${{ secrets.QT_KEYSTORE_PASSWORD || 'xadanqyr2026' }}
           APP_KEY_ALIAS: ${{ secrets.QT_KEY_ALIAS || 'qyriptalk' }}
-          APP_KEY_PASSWORD: ${{ secrets.QT_KEY_PASSWORD || secrets.QT_KEYSTORE_PASSWORD }}
+          APP_KEY_PASSWORD: ${{ secrets.QT_KEY_PASSWORD || secrets.QT_KEYSTORE_PASSWORD || 'xadanqyr2026' }}
           ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
         run: |
           flutter build apk --release --build-number=${{ github.run_number }} --dart-define=FIREBASE_ANDROID_APP_ID="$ANDROID_APP_ID" --dart-define=APP_BUILD=${{ github.run_number }}
