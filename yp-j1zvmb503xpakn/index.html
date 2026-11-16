@@ -318,23 +318,25 @@ async function fqCustomSignIn(pass) {
 
 async function panelSignIn(k, email, pass) {
   const auth = FB[k].auth;
-  // FlinQ: önce gömülü anahtarla özel giriş (en güvenilir yol).
-  if (k === 'fq') {
-    try { if (await fqCustomSignIn(pass)) return; } catch (_) {}
-  }
-  try {
-    await auth.signInWithEmailAndPassword(email, pass);
-  } catch (x) {
-    const c = x.code || '';
-    if (authOff(x)) throw new Error(AUTH_OFF_MSG(k));
-    if (c === 'auth/too-many-requests') throw new Error('Çok fazla deneme yapıldı. Biraz bekle.');
-    if (!/user-not-found|invalid-credential|invalid-login|wrong-password/.test(c)) throw x;
-    try { await auth.createUserWithEmailAndPassword(email, pass); }
-    catch (y) {
-      if (authOff(y)) throw new Error(AUTH_OFF_MSG(k));
-      throw new Error('Şifre hatalı.');
+  // 1) Normal şifreyle giriş (var olan düzeni bozmaz).
+  try { await auth.signInWithEmailAndPassword(email, pass); return; }
+  catch (x) {
+    if (authOff(x)) {
+      // FlinQ auth açık ama giriş olmadı değil; Qyriptalk kapalıysa gömülü anahtar da yok -> bildir.
+      if (k === 'qt') throw new Error(AUTH_OFF_MSG(k));
+    }
+    if ((x.code || '') === 'auth/too-many-requests') throw new Error('Çok fazla deneme yapıldı. Biraz bekle.');
+    // Hesap hiç yoksa oluştur (ilk kurulum).
+    if (/user-not-found/.test(x.code || '')) {
+      try { await auth.createUserWithEmailAndPassword(email, pass); return; } catch (_) {}
     }
   }
+  // 2) FlinQ: gömülü anahtarla kurtarma — şifreyi geri döndür ya da özel jetonla gir.
+  if (k === 'fq') {
+    try { if (await recoverFqPanel(email, pass)) { await auth.signInWithEmailAndPassword(email, pass); return; } } catch (_) {}
+    try { if (await fqCustomSignIn(pass)) return; } catch (_) {}
+  }
+  throw new Error('Şifre hatalı.');
 }
 
 $('#pForm').onsubmit = async (e) => {
