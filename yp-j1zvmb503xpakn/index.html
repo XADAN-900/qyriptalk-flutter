@@ -1339,7 +1339,7 @@ function dmThread(k, key, names) {
   const node = DM_NODE();
   const ref = db(k).ref(`${node}/${key}/messages`).orderByKey().limitToLast(1000);
   const title = key.split('_').map((u) => names[u] || u.slice(0, 6)).join(' ↔ ');
-  const o = dialog(`<div class="row"><h2 class="grow">${esc(title)}</h2><span class="live"><i></i>Canlı</span></div><div class="muted">Tüm mesajlar</div><div class="msgs" id="dml">${LOADING}</div><div class="actions"><button class="btn" data-x>Kapat</button></div>`, true, () => ref.off('value', cb));
+  const o = dialog(`<div class="row"><h2 class="grow">${esc(title)}</h2><span class="live"><i></i>Canlı</span></div><div class="muted" id="dmcount">Yükleniyor…</div><div class="msgs" id="dml">${LOADING}</div><div class="actions"><button class="btn" data-x>Kapat</button></div>`, true, () => ref.off('value', cb));
   $('[data-x]', o).onclick = () => o.close();
   const render = (f, name) => {
     let body = esc(f.text);
@@ -1359,6 +1359,7 @@ function dmThread(k, key, names) {
       const name = f.name || names[f.from] || f.from.slice(0, 6);
       return `<div class="m1"><div class="t">${render(f, name)}</div><button class="btn sm danger" data-d="${esc(mid)}">🗑️</button></div>`;
     }).join('') || '<div class="empty">Mesaj yok</div>');
+    const cEl = $('#dmcount', o); if (cEl) cEl.textContent = rows.length + ' mesaj';
     if (atBottom) box.scrollTop = box.scrollHeight;
   };
   ref.on('value', cb, (e) => patch($('#dml', o), `<div class="empty">${esc(e.message)}</div>`));
