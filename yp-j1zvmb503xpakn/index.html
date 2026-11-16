@@ -1058,6 +1058,7 @@ VIEWS.posts = {
         card = document.createElement('div'); card.className = 'post fade'; card.dataset.id = p.id;
         card.innerHTML = `<div class="m">${p.type === 'text' ? `<div style="padding:12px;text-align:center">${esc(p.caption.slice(0, 120))}</div>` : p.type === 'video' ? '▶ Video' : '<span class="spin"></span>'}</div><div class="b"></div>`;
         if (p.type === 'image') val(`posts/${p.id}/url`, 'fq').then((u) => { $('.m', card).innerHTML = u ? `<img src="${esc(u)}" loading="lazy">` : 'Görsel yok'; }).catch(() => {});
+        else if (p.type === 'video') val(`posts/${p.id}/url`, 'fq').then((u) => { if (u) videoPoster(u, $('.m', card)); }).catch(() => {});
       }
       patch($('.b', card), info);
       const at = grid.children[i];
@@ -1065,6 +1066,26 @@ VIEWS.posts = {
     });
   },
 };
+
+/** Video gönderisinin ilk karesini (poster) kart içinde gösterir. */
+function videoPoster(url, holder) {
+  const v = document.createElement('video');
+  v.muted = true; v.playsInline = true; v.preload = 'metadata'; v.crossOrigin = 'anonymous';
+  v.src = String(url).includes('#') ? url : url + '#t=0.1';
+  const fail = () => { try { v.src = ''; } catch (_) {} };
+  v.onloadeddata = () => {
+    try {
+      const c = document.createElement('canvas');
+      c.width = v.videoWidth || 320; c.height = v.videoHeight || 320;
+      c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+      holder.innerHTML = `<div style="position:relative;width:100%;height:100%"><img src="${c.toDataURL('image/jpeg', 0.6)}" style="width:100%;height:100%;object-fit:cover"><span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:40px;color:#fff;text-shadow:0 2px 8px #000">▶</span></div>`;
+    } catch (_) {
+      holder.innerHTML = `<video src="${esc(url)}#t=0.1" muted preload="metadata" style="width:100%;height:100%;object-fit:cover"></video>`;
+    }
+    fail();
+  };
+  v.onerror = fail;
+}
 
 function postDetail(id) {
   const p = L.fq.postMeta[id]; if (!p) return;
