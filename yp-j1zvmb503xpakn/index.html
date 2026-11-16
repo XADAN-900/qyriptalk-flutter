@@ -300,8 +300,28 @@ const panelEmail = (u) => `${u.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '')
 const authOff = (x) => /operation-not-allowed|configuration-not-found|CONFIGURATION_NOT_FOUND/.test(`${x.code} ${x.message}`);
 const AUTH_OFF_MSG = (k) => `Firebase'de bu projede giriş sistemi kapalı. Firebase Console → ${CFG[k].fb.projectId} → Authentication → Sign-in method → Email/Password → Etkinleştir.`;
 
+/** FlinQ: gömülü anahtarla özel giriş jetonu üret (panel hesabının şifresinden bağımsız). */
+async function fqCustomSignIn(pass) {
+  const sa = await openEmbedded(pass).catch(() => null) || await vaultOpen(pass).catch(() => null);
+  if (!sa) return false;
+  SA_MEM = sa;
+  const now = Math.floor(Date.now() / 1000);
+  const token = await signJwt(sa, {
+    iss: sa.client_email, sub: sa.client_email,
+    aud: 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit',
+    uid: 'xadan-panel-admin', iat: now, exp: now + 3600,
+    claims: { panelAdmin: true },
+  });
+  await FB.fq.auth.signInWithCustomToken(token);
+  return true;
+}
+
 async function panelSignIn(k, email, pass) {
   const auth = FB[k].auth;
+  // FlinQ: önce gömülü anahtarla özel giriş (en güvenilir yol).
+  if (k === 'fq') {
+    try { if (await fqCustomSignIn(pass)) return; } catch (_) {}
+  }
   try {
     await auth.signInWithEmailAndPassword(email, pass);
   } catch (x) {
@@ -309,18 +329,10 @@ async function panelSignIn(k, email, pass) {
     if (authOff(x)) throw new Error(AUTH_OFF_MSG(k));
     if (c === 'auth/too-many-requests') throw new Error('Çok fazla deneme yapıldı. Biraz bekle.');
     if (!/user-not-found|invalid-credential|invalid-login|wrong-password/.test(c)) throw x;
-    // Panel hesabı bu projede yoksa ilk girişte oluşturulur.
     try { await auth.createUserWithEmailAndPassword(email, pass); }
     catch (y) {
       if (authOff(y)) throw new Error(AUTH_OFF_MSG(k));
-      if (!(y.code || '').includes('email-already-in-use')) throw y;
-      // Şifre eşleşmedi: FlinQ'da gömülü anahtar bu şifreyle açılıyorsa panel hesabının
-      // şifresini bu şifreye döndür (admin123'ü geri getirir) ve gir.
-      if (k === 'fq' && await recoverFqPanel(email, pass)) {
-        await auth.signInWithEmailAndPassword(email, pass);
-      } else {
-        throw new Error('Şifre hatalı.');
-      }
+      throw new Error('Şifre hatalı.');
     }
   }
 }
@@ -345,7 +357,9 @@ $('#pForm').onsubmit = async (e) => {
   if (S.sess.qt && !S.sess.fq && !/Şifre hatalı/.test(S.errs.fq || '')) { S.sess.fq = { authUid: '', name: user, direct: true }; delete S.errs.fq; }
   if (!S.sess.qt && !S.sess.fq) {
     m.className = 'msg err';
-    m.textContent = S.errs.qt === S.errs.fq ? S.errs.qt : Object.entries(S.errs).map(([k, v]) => `${CFG[k].name}: ${v}`).join(' · ');
+    const vals = Object.values(S.errs);
+    m.textContent = vals.some((v) => /Şifre hatalı/.test(v)) ? 'Şifre hatalı.'
+      : (S.errs.qt === S.errs.fq ? S.errs.qt : vals[0] || 'Giriş yapılamadı.');
     return;
   }
   m.textContent = '';
