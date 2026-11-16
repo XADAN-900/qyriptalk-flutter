@@ -327,7 +327,7 @@ $('#pForm').onsubmit = async (e) => {
   const email = panelEmail(user);
   S.errs = {};
   await Promise.all(['qt', 'fq'].map(async (k) => {
-    try { await panelSignIn(k, email, pass); S.sess[k] = { authUid: FB[k].auth.currentUser.uid, name: user }; }
+    try { await panelSignIn(k, email, pass); S.sess[k] = { authUid: FB[k].auth.currentUser.uid, name: user }; S.pass = pass; }
     catch (x) { S.errs[k] = x.message || String(x); }
   }));
   // Tek ad + tek şifre: bir projede doğrulandıysa diğeri de açılır
@@ -492,8 +492,14 @@ function renderWho() {
   const name = (S.sess.qt || S.sess.fq || {}).name || '';
   $('#who').innerHTML = `<div class="row" style="margin-bottom:8px"><span class="av" style="width:28px;height:28px;background:linear-gradient(135deg,var(--qt),var(--fq))">${esc(name.slice(0, 1).toUpperCase())}</span><b class="grow">${esc(name)}</b></div>
     <div class="row"><a href="#" id="chpw" class="muted grow">Panel şifresini değiştir</a><a href="#" id="outAll" class="muted">Çıkış</a></div>
-    ${getSA() ? '<div style="margin-top:6px"><a href="#" id="rmsa" class="muted" style="font-size:12px">FlinQ anahtarını bu bilgisayardan kaldır</a></div>' : ''}`;
-  const rm = $('#rmsa'); if (rm) rm.onclick = (e) => { e.preventDefault(); localStorage.removeItem(SA_KEY); saToken = null; renderWho(); toast('Anahtar kaldırıldı'); };
+    ${getSA() ? '<div style="margin-top:6px"><a href="#" id="rmsa" class="muted" style="font-size:12px">FlinQ anahtarını kaldır</a></div>' : ''}`;
+  const rm = $('#rmsa'); if (rm) rm.onclick = async (e) => {
+    e.preventDefault();
+    if (!(await ask('Anahtarı kaldır', 'Kayıtlı FlinQ anahtarı her cihazdan silinecek.', { ok: 'Kaldır', danger: true }))) return;
+    localStorage.removeItem(SA_KEY); SA_MEM = null; saToken = null;
+    await db('fq').ref('panelVault').remove().catch(() => {});
+    renderWho(); toast('Anahtar kaldırıldı');
+  };
   $('#outAll').onclick = (e) => { e.preventDefault(); logoutAll(); };
   $('#chpw').onclick = async (e) => {
     e.preventDefault();
@@ -503,11 +509,14 @@ function renderWho() {
     if (!pw) return;
     if (pw.length < 8) { toast('En az 8 karakter olmalı.', 'err'); return; }
     await act(async () => {
+      const sa = await vaultOpen(cur).catch(() => null);
       for (const k of ['qt', 'fq'].filter((x) => S.sess[x] && FB[x].auth.currentUser)) {
         const u = FB[k].auth.currentUser;
         await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email, cur));
         await u.updatePassword(pw);
       }
+      if (sa) await vaultSave(sa, pw); // kayıtlı anahtar yeni şifreyle yeniden kilitlenir
+      S.pass = pw;
     }, 'Panel şifresi değiştirildi ✅');
   };
 }
@@ -724,7 +733,44 @@ async function setQtPassword(u) {
 // ---------------- FlinQ: Google hizmet anahtarıyla şifre değiştirme ----------------
 // Anahtar sadece BU bilgisayarın tarayıcısında saklanır (sayfanın kodunda yok, kimseye gitmez).
 const SA_KEY = 'xadan_fq_service_key';
-const getSA = () => { try { return JSON.parse(localStorage.getItem(SA_KEY) || 'null'); } catch (_) { return null; } };
+// Anahtar, panel şifresiyle şifrelenip (AES-256, PBKDF2) FlinQ veritabanında "panelVault" altında saklanır:
+// bir kez yüklenir, her cihazda panel şifresiyle açılır. Açık hali sadece bellekte durur.
+let SA_MEM = null;
+const getSA = () => SA_MEM || (() => { try { return JSON.parse(localStorage.getItem(SA_KEY) || 'null'); } catch (_) { return null; } })();
+const WEAK = ['admin123', 'admin', '123456', '12345678', 'password', 'qwerty', '123456789', '111111', 'admin1234'];
+const weakPw = (p) => !p || p.length < 10 || WEAK.includes(p.toLowerCase()) || /^(.)\1+$/.test(p) || /^\d+$/.test(p);
+const b64e = (u8) => btoa(String.fromCharCode(...u8));
+const b64d = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+async function vaultKey(pass, salt) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 310000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function vaultSave(sa, pass) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await vaultKey(pass, salt), new TextEncoder().encode(JSON.stringify(sa))));
+  await db('fq').ref('panelVault').set({ v: 1, salt: b64e(salt), iv: b64e(iv), ct: b64e(ct), ts: Date.now() });
+}
+async function vaultOpen(pass) {
+  const v = await val('panelVault', 'fq').catch(() => null);
+  if (!v || !v.ct) return null;
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64d(v.iv) }, await vaultKey(pass, b64d(v.salt)), b64d(v.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+/** Şifre değiştirme için anahtarı hazırla: bellek → kasa (panel şifresiyle) → ilk kez dosya seçimi. */
+async function ensureSA() {
+  if (getSA()) return getSA();
+  const hasVault = !!(await val('panelVault', 'fq').catch(() => null));
+  if (hasVault) {
+    let pass = S.pass;
+    for (let i = 0; i < 3; i++) {
+      if (!pass) pass = await ask('Panel şifreni yaz', 'Kayıtlı FlinQ anahtarını açmak için panel şifren gerekiyor.', { input: 'Panel şifresi', ok: 'Aç', type: 'password' });
+      if (!pass) return null;
+      try { SA_MEM = await vaultOpen(pass); S.pass = pass; return SA_MEM; } catch (_) { toast('Şifre hatalı.', 'err'); pass = null; }
+    }
+    return null;
+  }
+  return (await askServiceKey()) ? getSA() : null;
+}
 const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const b64uStr = (s) => b64u(new TextEncoder().encode(s));
 async function signJwt(sa, claims) {
@@ -778,8 +824,29 @@ function askServiceKey() {
         const sa = JSON.parse(await f.text());
         if (!sa.private_key || !sa.client_email) throw new Error('Bu dosya bir hizmet anahtarı değil.');
         if (sa.project_id !== CFG.fq.fb.projectId) throw new Error(`Bu anahtar ${sa.project_id} projesine ait. FlinQ (${CFG.fq.fb.projectId}) projesinden indirmelisin.`);
-        localStorage.setItem(SA_KEY, JSON.stringify(sa)); saToken = null;
-        o.remove(); toast('Anahtar kaydedildi ✅', 'ok'); res(true);
+        o.remove();
+        SA_MEM = sa; saToken = null;
+        // Her cihazda çalışsın diye panel şifresiyle şifreleyip kasaya koy (zayıf şifreyle koyulmaz).
+        let pass = S.pass;
+        if (!pass) pass = await ask('Panel şifreni yaz', 'Anahtarı şifreleyip kaydetmek için panel şifren gerekiyor.', { input: 'Panel şifresi', ok: 'Devam', type: 'password' });
+        if (pass && weakPw(pass)) {
+          const np = await ask('Önce güçlü bir panel şifresi koy',
+            'Bu anahtar FlinQ\'daki bütün hesaplara tam yetki veriyor. Her cihazdan açılabilmesi için panel şifresiyle kilitlenecek; "admin123" gibi tahmin edilebilir bir şifreyle kilitlemek güvenli değil.<br><br>Yeni panel şifresi (en az 10 karakter, harf ve rakam karışık):',
+            { input: 'Yeni panel şifresi', ok: 'Şifreyi değiştir ve kaydet', type: 'password' });
+          if (!np || weakPw(np)) { toast('Şifre yeterince güçlü değil. Anahtar sadece bu oturumda kullanılacak.', 'err'); res(true); return; }
+          for (const k of ['qt', 'fq'].filter((x) => FB[x].auth.currentUser)) {
+            const u = FB[k].auth.currentUser;
+            await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email, pass));
+            await u.updatePassword(np);
+          }
+          pass = np; S.pass = np;
+          toast('Panel şifresi değiştirildi. Artık yeni şifreyle gireceksin.', 'ok');
+        }
+        if (pass) {
+          try { await vaultSave(sa, pass); toast('Anahtar kaydedildi ✅ Artık her cihazda çalışır.', 'ok'); }
+          catch (x) { toast('Anahtar kaydedilemedi: ' + (x.message || x), 'err'); }
+        }
+        res(true);
       } catch (x) { const m = $('#sam', o); m.className = 'msg err'; m.textContent = x.message; }
     };
   });
@@ -800,7 +867,7 @@ async function setFqPassword(u) {
   } catch (x) {
     console.warn('setUserPassword:', x);
     // 2) Fonksiyon kurulu değilse: Google hizmet anahtarı (bu bilgisayarda bir kez seçilir).
-    if (!getSA() && !(await askServiceKey())) return false;
+    if (!(await ensureSA())) return false;
     return act(() => fqAdminCall('update', { localId: u.uid, password: pw }), 'Şifre değiştirildi ✅');
   }
 }
