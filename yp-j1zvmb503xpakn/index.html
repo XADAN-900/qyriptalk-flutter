@@ -1352,7 +1352,7 @@ function dmThread(k, key, names) {
     return `<b>${esc(name)}</b> <span class="muted" style="font-size:12px">${fmt(f.ts)}</span><br>${body}`;
   };
   const cb = (snap) => {
-    const rows = []; snap.forEach((c) => rows.push([c.key, c.val() || {}]));
+    const rows = []; snap.forEach((c) => { rows.push([c.key, c.val() || {}]); });
     const box = $('#dml', o); const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
     patch(box, rows.map(([mid, m]) => {
       const f = dmField(k, m);
