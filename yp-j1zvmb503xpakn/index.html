@@ -11,6 +11,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 :root{
@@ -783,12 +784,29 @@ function askServiceKey() {
     };
   });
 }
+/** Eski FlinQ panelindeki gibi: Firebase'e kurulu "setUserPassword" / "deleteUserAccount" fonksiyonları. */
+function fqCallable(name) {
+  return FB.fq.app.functions('europe-west1').httpsCallable(name);
+}
 async function setFqPassword(u) {
-  if (!getSA() && !(await askServiceKey())) return false;
   const pw = await ask('Yeni şifre belirle', `${esc(u.name)} bundan sonra bu şifreyle girecek. Telefonda açık oturumu varsa tekrar girmesi gerekebilir.`, { input: 'En az 6 karakter', ok: 'Şifreyi değiştir' });
   if (!pw) return false;
   if (pw.length < 6) { toast('Şifre en az 6 karakter olmalı.', 'err'); return false; }
-  return act(() => fqAdminCall('update', { localId: u.uid, password: pw }), 'Şifre değiştirildi ✅');
+  // 1) Firebase'deki hazır fonksiyon (eski panelin kullandığı yol) — kurulum gerekmez.
+  try {
+    await fqCallable('setUserPassword')({ uid: u.uid, newPassword: pw });
+    toast('Şifre değiştirildi ✅', 'ok');
+    return true;
+  } catch (x) {
+    console.warn('setUserPassword:', x);
+    // 2) Yedek yol: bu bilgisayarda kayıtlı hizmet anahtarı.
+    if (getSA()) return act(() => fqAdminCall('update', { localId: u.uid, password: pw }), 'Şifre değiştirildi ✅');
+    const code = String(x && (x.code || x.message) || x);
+    toast(/permission|unauthenticated/i.test(code)
+      ? 'Firebase fonksiyonu bu hesaba izin vermedi: ' + code
+      : 'Firebase\'deki "setUserPassword" fonksiyonuna ulaşılamadı (' + code + ').', 'err');
+    return false;
+  }
 }
 
 async function toggleAdmin(k, u) {
@@ -827,7 +845,10 @@ async function deleteUser(k, u) {
     }
     await db(k).ref().update(up);
     // Anahtar yüklüyse giriş hesabı da tamamen silinir.
-    if (k === 'fq' && getSA()) await fqAdminCall('delete', { localId: u.uid }).catch(() => {});
+    if (k === 'fq') {
+      try { await fqCallable('deleteUserAccount')({ uid: u.uid }); }
+      catch (_) { if (getSA()) await fqAdminCall('delete', { localId: u.uid }).catch(() => {}); }
+    }
   }, 'Hesap silindi');
 }
 
