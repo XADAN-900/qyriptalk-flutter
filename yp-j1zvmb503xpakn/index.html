@@ -487,7 +487,9 @@ function renderNav() {
 function renderWho() {
   const name = (S.sess.qt || S.sess.fq || {}).name || '';
   $('#who').innerHTML = `<div class="row" style="margin-bottom:8px"><span class="av" style="width:28px;height:28px;background:linear-gradient(135deg,var(--qt),var(--fq))">${esc(name.slice(0, 1).toUpperCase())}</span><b class="grow">${esc(name)}</b></div>
-    <div class="row"><a href="#" id="chpw" class="muted grow">Panel şifresini değiştir</a><a href="#" id="outAll" class="muted">Çıkış</a></div>`;
+    <div class="row"><a href="#" id="chpw" class="muted grow">Panel şifresini değiştir</a><a href="#" id="outAll" class="muted">Çıkış</a></div>
+    ${getSA() ? '<div style="margin-top:6px"><a href="#" id="rmsa" class="muted" style="font-size:12px">FlinQ anahtarını bu bilgisayardan kaldır</a></div>' : ''}`;
+  const rm = $('#rmsa'); if (rm) rm.onclick = (e) => { e.preventDefault(); localStorage.removeItem(SA_KEY); saToken = null; renderWho(); toast('Anahtar kaldırıldı'); };
   $('#outAll').onclick = (e) => { e.preventDefault(); logoutAll(); };
   $('#chpw').onclick = async (e) => {
     e.preventDefault();
@@ -640,7 +642,7 @@ function userDetail(uid) {
       </div>
       <div class="row wrap">
         <button class="btn" data-a="rename">✏️ Adını değiştir</button>
-        ${k === 'qt' ? '<button class="btn" data-a="pass">🔑 Şifresini değiştir</button>' : ''}
+        <button class="btn" data-a="pass">🔑 Şifresini değiştir</button>
         ${k === 'fq' ? `<button class="btn" data-a="verify">${u.verified ? 'Mavi tiki kaldır' : '✔️ Mavi tik ver'}</button>` : ''}
         <button class="btn" data-a="admin">${u.admin ? 'Yöneticilikten çıkar' : '🛡️ Yönetici yap'}</button>
         <button class="btn ${u.banned ? 'ok' : 'danger'}" data-a="ban">${u.banned ? 'Askıyı kaldır' : '⛔ Askıya al'}</button>
@@ -650,7 +652,7 @@ function userDetail(uid) {
     $('#udb', o).querySelectorAll('[data-a]').forEach((b) => b.onclick = async () => {
       const a = b.dataset.a;
       if (a === 'rename') await renameUser(k, u);
-      if (a === 'pass') await setQtPassword(u);
+      if (a === 'pass') await (k === 'qt' ? setQtPassword(u) : setFqPassword(u));
       if (a === 'verify') await act(() => db(k).ref(`users/${u.uid}/verified`).set(u.verified ? null : true), u.verified ? 'Mavi tik kaldırıldı' : 'Mavi tik verildi ✔️');
       if (a === 'admin') await toggleAdmin(k, u);
       if (a === 'ban') await toggleBan(k, u);
@@ -715,6 +717,77 @@ async function setQtPassword(u) {
   }, 'Şifre değiştirildi ✅');
 }
 
+// ---------------- FlinQ: Google hizmet anahtarıyla şifre değiştirme ----------------
+// Anahtar sadece BU bilgisayarın tarayıcısında saklanır (sayfanın kodunda yok, kimseye gitmez).
+const SA_KEY = 'xadan_fq_service_key';
+const getSA = () => { try { return JSON.parse(localStorage.getItem(SA_KEY) || 'null'); } catch (_) { return null; } };
+const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const b64uStr = (s) => b64u(new TextEncoder().encode(s));
+async function signJwt(sa, claims) {
+  const pem = sa.private_key.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
+  const der = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey('pkcs8', der.buffer, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
+  const head = b64uStr(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid: sa.private_key_id }));
+  const body = b64uStr(JSON.stringify(claims));
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(`${head}.${body}`));
+  return `${head}.${body}.${b64u(sig)}`;
+}
+let saToken = null;
+async function saBearer(sa, fresh = false) {
+  const now = Math.floor(Date.now() / 1000);
+  if (!fresh && saToken && saToken.exp > now + 60) return saToken.value;
+  try {
+    const assertion = await signJwt(sa, { iss: sa.client_email, scope: 'https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/cloud-platform', aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 });
+    const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: `grant_type=${encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer')}&assertion=${assertion}` });
+    const j = await r.json();
+    if (j.access_token) { saToken = { value: j.access_token, exp: now + (j.expires_in || 3600) }; return saToken.value; }
+  } catch (_) {}
+  // Yedek yol: doğrudan imzalı anahtar
+  return signJwt(sa, { iss: sa.client_email, sub: sa.client_email, aud: 'https://identitytoolkit.googleapis.com/', iat: now, exp: now + 3600 });
+}
+async function fqAdminCall(op, body) {
+  const sa = getSA(); if (!sa) throw new Error('Anahtar yok');
+  const url = `https://identitytoolkit.googleapis.com/v1/projects/${sa.project_id}/accounts:${op}`;
+  for (const fresh of [false, true]) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + await saBearer(sa, fresh) }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok) return j;
+    if (fresh) throw new Error((j.error && j.error.message) || ('HTTP ' + r.status));
+  }
+}
+function askServiceKey() {
+  return new Promise((res) => {
+    const o = dialog(`<h2>Bir kerelik kurulum</h2>
+      <div class="muted" style="margin:6px 0 12px">FlinQ kullanıcılarının şifresini değiştirebilmek için Google'ın verdiği <b>hizmet anahtarı</b> dosyası gerekiyor. Bunu sadece bir kez yaparsın; dosya sadece bu bilgisayarın tarayıcısında saklanır, kimseye gönderilmez.</div>
+      <ol style="padding-left:18px;line-height:1.7;margin:0 0 14px">
+        <li><a href="https://console.firebase.google.com/project/flinq-8e74c/settings/serviceaccounts/adminsdk" target="_blank" rel="noopener">Firebase → FlinQ → Proje ayarları → Hizmet hesapları</a> sayfasını aç.</li>
+        <li><b>"Yeni özel anahtar oluştur"</b> → <b>"Anahtar oluştur"</b>a bas. Bir <b>.json</b> dosyası iner.</li>
+        <li>O dosyayı aşağıdan seç.</li>
+      </ol>
+      <input type="file" id="saf" accept=".json,application/json">
+      <div class="msg" id="sam"></div>
+      <div class="actions"><button class="btn" data-x>Vazgeç</button></div>`);
+    $('[data-x]', o).onclick = () => { o.remove(); res(false); };
+    $('#saf', o).onchange = async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      try {
+        const sa = JSON.parse(await f.text());
+        if (!sa.private_key || !sa.client_email) throw new Error('Bu dosya bir hizmet anahtarı değil.');
+        if (sa.project_id !== CFG.fq.fb.projectId) throw new Error(`Bu anahtar ${sa.project_id} projesine ait. FlinQ (${CFG.fq.fb.projectId}) projesinden indirmelisin.`);
+        localStorage.setItem(SA_KEY, JSON.stringify(sa)); saToken = null;
+        o.remove(); toast('Anahtar kaydedildi ✅', 'ok'); res(true);
+      } catch (x) { const m = $('#sam', o); m.className = 'msg err'; m.textContent = x.message; }
+    };
+  });
+}
+async function setFqPassword(u) {
+  if (!getSA() && !(await askServiceKey())) return false;
+  const pw = await ask('Yeni şifre belirle', `${esc(u.name)} bundan sonra bu şifreyle girecek. Telefonda açık oturumu varsa tekrar girmesi gerekebilir.`, { input: 'En az 6 karakter', ok: 'Şifreyi değiştir' });
+  if (!pw) return false;
+  if (pw.length < 6) { toast('Şifre en az 6 karakter olmalı.', 'err'); return false; }
+  return act(() => fqAdminCall('update', { localId: u.uid, password: pw }), 'Şifre değiştirildi ✅');
+}
+
 async function toggleAdmin(k, u) {
   if (k === 'qt' && !u.authUid && !u.admin) { toast('Önce güvenli girişe geçmesi gerekiyor.', 'err'); return false; }
   const ok = await ask(u.admin ? 'Yöneticilikten çıkar' : 'Yönetici yap', `${esc(u.name)} ${u.admin ? 'artık uygulamada yönetici olmayacak.' : 'uygulamada yönetici olacak.'}`, { ok: 'Onayla', danger: u.admin });
@@ -750,6 +823,8 @@ async function deleteUser(k, u) {
       owners.forEach(([p, x]) => { if (x === u.uid) up[`posts/${p}`] = null; });
     }
     await db(k).ref().update(up);
+    // Anahtar yüklüyse giriş hesabı da tamamen silinir.
+    if (k === 'fq' && getSA()) await fqAdminCall('delete', { localId: u.uid }).catch(() => {});
   }, 'Hesap silindi');
 }
 
