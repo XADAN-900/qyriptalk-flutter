@@ -30,6 +30,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _themeMode = (ti >= 0 && ti < ThemeMode.values.length)
         ? ThemeMode.values[ti]
         : ThemeMode.system;
+    _lang = prefs.getString('lang');
     _muted.addAll(prefs.getStringList('mutedChats') ?? const []);
     _pinned.addAll(prefs.getStringList('pinnedChats') ?? const []);
     _archived.addAll(prefs.getStringList('archivedChats') ?? const []);
@@ -72,6 +73,34 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   ThemeMode _themeMode = ThemeMode.system;
   ThemeMode get themeMode => _themeMode;
+
+  // ---- Dil / çeviri ----
+  static const List<String> kLanguages = ['tr', 'en', 'fr', 'es', 'pt', 'ru', 'ar'];
+  String? _lang;
+
+  /// Seçili dil kodu. Henüz seçilmemişse cihaz dilini (desteklenenlerden) kullanır.
+  String get languageCode {
+    final l = _lang;
+    if (l != null && kLanguages.contains(l)) return l;
+    final dev = WidgetsBinding.instance.platformDispatcher.locale.languageCode;
+    return kLanguages.contains(dev) ? dev : 'tr';
+  }
+
+  /// Kullanıcı dili daha önce açıkça seçti mi (kayıt akışında sormak için).
+  bool get hasChosenLanguage => _lang != null;
+
+  Locale get locale => Locale(languageCode);
+
+  void setLanguage(String code) {
+    if (!kLanguages.contains(code)) return;
+    _lang = code;
+    prefs.setString('lang', code);
+    final uid = _uid;
+    if (uid != null) {
+      db.ref('users/$uid/settings/lang').set(code).catchError((_) {});
+    }
+    notifyListeners();
+  }
 
   final _subs = <StreamSubscription>[];
   final Map<String, StreamSubscription> _lastSubs = {};

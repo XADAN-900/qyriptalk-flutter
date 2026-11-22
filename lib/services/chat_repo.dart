@@ -5,6 +5,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/utils.dart';
+import 'translate.dart';
 import '../models/models.dart';
 
 /// Tek bir sohbetin (oda ya da özel mesaj) veritabanı işlemleri.
@@ -141,27 +142,17 @@ class Translator {
               caseSensitive: false)
           .hasMatch(s);
 
+  /// Metni [target] diline çevirir (kaynak otomatik algılanır). [target] verilmezse
+  /// Türkçe'ye çevirir. 7 dil desteklenir (tr, en, fr, es, pt, ru, ar).
   static Future<String?> translate(String text, {String? target}) async {
     final t = text.trim();
     if (t.isEmpty) return null;
-    final to = target ?? (looksTurkish(t) ? 'en' : 'tr');
-    final from = to == 'tr' ? 'en' : 'tr';
-    final k = '$from|$to|$t';
-    final hit = _cache[k];
-    if (hit != null) return hit;
-    try {
-      final uri = Uri.parse('https://api.mymemory.translated.net/get').replace(
-        queryParameters: {'q': t, 'langpair': '$from|$to'},
-      );
-      final res = await http.get(uri).timeout(const Duration(seconds: 12));
-      if (res.statusCode != 200) return null;
-      final j = asMap(jsonDecode(res.body));
-      final out = asStr(asMap(j['responseData'])['translatedText']);
-      if (out.isEmpty) return null;
-      _cache[k] = out;
-      return out;
-    } catch (_) {
-      return null;
-    }
+    final to = target ?? 'tr';
+    final r = await Translate.translate(t, target: to, source: 'auto');
+    final out = r?['text'];
+    if (out == null || out.isEmpty) return null;
+    // Zaten hedef dildeyse (çeviri orijinalle aynıysa) çeviri gösterme.
+    if (r!['src'] == to || out.trim() == t) return null;
+    return out;
   }
 }

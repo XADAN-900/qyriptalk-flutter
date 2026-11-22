@@ -14,6 +14,7 @@ import 'core/firebase_config.dart';
 import 'core/nav.dart';
 import 'core/theme.dart';
 import 'screens/auth_screen.dart';
+import 'screens/language_setup_screen.dart';
 import 'screens/call_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/app_state.dart';
@@ -142,8 +143,11 @@ class _QyriptalkAppState extends State<QyriptalkApp> {
           theme: AppTheme.light(),
           darkTheme: AppTheme.dark(),
           themeMode: app.themeMode,
-          locale: const Locale('tr', 'TR'),
-          supportedLocales: const [Locale('tr', 'TR'), Locale('en', 'US')],
+          locale: app.locale,
+          supportedLocales: const [
+            Locale('tr'), Locale('en'), Locale('fr'),
+            Locale('es'), Locale('pt'), Locale('ru'), Locale('ar'),
+          ],
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
@@ -193,17 +197,19 @@ class _Gate extends StatelessWidget {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 350),
       child: app.isLoggedIn
-          ? AppGuard(
-              key: ValueKey('guard_${app.uid}'),
-              db: app.db,
-              uid: app.uid!,
-              repo: 'XADAN-900/qyriptalk-flutter',
-              apkName: 'Qyriptalk.apk',
-              appName: 'Qyriptalk',
-              accent: const Color(0xFF7B61FF),
-              onLogout: app.logout,
-              child: HomeScreen(key: ValueKey(app.uid)),
-            )
+          ? (!app.hasChosenLanguage
+              ? const LanguageSetupScreen(key: ValueKey('langsetup'))
+              : AppGuard(
+                  key: ValueKey('guard_${app.uid}'),
+                  db: app.db,
+                  uid: app.uid!,
+                  repo: 'XADAN-900/qyriptalk-flutter',
+                  apkName: 'Qyriptalk.apk',
+                  appName: 'Qyriptalk',
+                  accent: const Color(0xFF7B61FF),
+                  onLogout: app.logout,
+                  child: HomeScreen(key: ValueKey(app.uid)),
+                ))
           : const AuthScreen(key: ValueKey('auth')),
     );
   }
