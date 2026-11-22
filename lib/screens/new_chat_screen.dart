@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:qyriptalk/core/i18n.dart';
 import 'package:provider/provider.dart';
 
 import '../core/utils.dart';
@@ -36,7 +37,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
       });
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Yeni sohbet')),
+      appBar: AppBar(title: const T('Yeni sohbet')),
       body: Column(
         children: [
           Padding(
@@ -44,8 +45,8 @@ class _NewChatScreenState extends State<NewChatScreen> {
             child: TextField(
               autofocus: false,
               onChanged: (v) => setState(() => _q = v.trim()),
-              decoration: const InputDecoration(
-                hintText: 'Kullanıcı adı yaz',
+              decoration: InputDecoration(
+                hintText: tr('Kullanıcı adı yaz'),
                 prefixIcon: Icon(Icons.search_rounded),
                 isDense: true,
               ),
@@ -53,18 +54,18 @@ class _NewChatScreenState extends State<NewChatScreen> {
           ),
           ListTile(
             leading: const CircleAvatar(child: Icon(Icons.group_add_rounded)),
-            title: const Text('Yeni oda oluştur', style: TextStyle(fontWeight: FontWeight.w600)),
+            title: const T('Yeni oda oluştur', style: TextStyle(fontWeight: FontWeight.w600)),
             onTap: () => showCreateRoomSheet(context),
           ),
           ListTile(
             leading: const CircleAvatar(child: Icon(Icons.qr_code_scanner_rounded)),
-            title: const Text('QR kod tara', style: TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: const Text('Oda daveti ya da arkadaşının profil kodu'),
+            title: const T('QR kod tara', style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: const T('Oda daveti ya da arkadaşının profil kodu'),
             onTap: () => scanQrFlow(context),
           ),
           ListTile(
             leading: const CircleAvatar(child: Icon(Icons.link_rounded)),
-            title: const Text('Davet bağlantısıyla katıl', style: TextStyle(fontWeight: FontWeight.w600)),
+            title: const T('Davet bağlantısıyla katıl', style: TextStyle(fontWeight: FontWeight.w600)),
             onTap: () => joinByInviteDialog(context),
           ),
           const Divider(),

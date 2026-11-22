@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:qyriptalk/core/i18n.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -104,7 +105,7 @@ class _LoginViewState extends State<_LoginView> {
                     style: TextStyle(fontSize: 38, fontWeight: FontWeight.w900, letterSpacing: -1)),
               ),
               const SizedBox(height: 6),
-              Text(
+              T(
                 'Tekrar hoş geldin! Hesabına giriş yap.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Theme.of(context).hintColor, fontSize: 15),
@@ -114,9 +115,9 @@ class _LoginViewState extends State<_LoginView> {
                 controller: _user,
                 textInputAction: TextInputAction.next,
                 autofillHints: const [AutofillHints.username],
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   prefixIcon: Icon(Icons.alternate_email_rounded),
-                  hintText: 'Kullanıcı adı',
+                  hintText: tr('Kullanıcı adı'),
                 ),
               ),
               const SizedBox(height: 12),
@@ -127,7 +128,7 @@ class _LoginViewState extends State<_LoginView> {
                 autofillHints: const [AutofillHints.password],
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.lock_outline_rounded),
-                  hintText: 'Şifre',
+                  hintText: tr('Şifre'),
                   suffixIcon: IconButton(
                     icon: Icon(_obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined),
                     onPressed: () => setState(() => _obscure = !_obscure),
@@ -145,7 +146,7 @@ class _LoginViewState extends State<_LoginView> {
                 const Expanded(child: Divider()),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text('Qyriptalk\'ta yeni misin?', style: TextStyle(color: Theme.of(context).hintColor)),
+                  child: T('Qyriptalk\'ta yeni misin?', style: TextStyle(color: Theme.of(context).hintColor)),
                 ),
                 const Expanded(child: Divider()),
               ]),
@@ -157,7 +158,7 @@ class _LoginViewState extends State<_LoginView> {
                 ),
                 onPressed: _busy ? null : widget.onRegister,
                 icon: const Icon(Icons.person_add_alt_1_rounded),
-                label: const Text('Yeni hesap oluştur', style: TextStyle(fontWeight: FontWeight.w700)),
+                label: const T('Yeni hesap oluştur', style: TextStyle(fontWeight: FontWeight.w700)),
               ),
             ],
           ),
@@ -320,7 +321,7 @@ class _RegisterFlowState extends State<_RegisterFlow> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(
             leading: const Icon(Icons.photo_library_outlined),
-            title: const Text('Galeriden seç'),
+            title: const T('Galeriden seç'),
             onTap: () {
               Navigator.pop(ctx);
               _pickPhoto(ImageSource.gallery);
@@ -328,7 +329,7 @@ class _RegisterFlowState extends State<_RegisterFlow> {
           ),
           ListTile(
             leading: const Icon(Icons.photo_camera_outlined),
-            title: const Text('Fotoğraf çek'),
+            title: const T('Fotoğraf çek'),
             onTap: () {
               Navigator.pop(ctx);
               _pickPhoto(ImageSource.camera);
@@ -337,7 +338,7 @@ class _RegisterFlowState extends State<_RegisterFlow> {
           if (_photo != null)
             ListTile(
               leading: const Icon(Icons.delete_outline, color: QColors.danger),
-              title: const Text('Fotoğrafı kaldır', style: TextStyle(color: QColors.danger)),
+              title: const T('Fotoğrafı kaldır', style: TextStyle(color: QColors.danger)),
               onTap: () {
                 Navigator.pop(ctx);
                 setState(() => _photo = null);
@@ -482,7 +483,7 @@ class _RegisterFlowState extends State<_RegisterFlow> {
           maxLength: 24,
           decoration: InputDecoration(
             prefixIcon: const Icon(Icons.alternate_email_rounded),
-            hintText: 'Kullanıcı adı',
+            hintText: tr('Kullanıcı adı'),
             suffixIcon: suffix,
             counterText: '',
             helperText: helper,
@@ -497,7 +498,7 @@ class _RegisterFlowState extends State<_RegisterFlow> {
           onChanged: (_) => setState(() {}),
           decoration: InputDecoration(
             prefixIcon: const Icon(Icons.lock_outline_rounded),
-            hintText: 'Şifre (en az 6 karakter)',
+            hintText: tr('Şifre (en az 6 karakter)'),
             suffixIcon: IconButton(
               icon: Icon(_obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined),
               onPressed: () => setState(() => _obscure = !_obscure),
@@ -532,7 +533,7 @@ class _RegisterFlowState extends State<_RegisterFlow> {
           onSubmitted: (_) => _next(),
           decoration: InputDecoration(
             prefixIcon: const Icon(Icons.lock_reset_rounded),
-            hintText: 'Şifre (tekrar)',
+            hintText: tr('Şifre (tekrar)'),
             suffixIcon: _pass2.text.isEmpty
                 ? null
                 : Icon(
@@ -548,7 +549,7 @@ class _RegisterFlowState extends State<_RegisterFlow> {
             Icon(Icons.info_outline_rounded, size: 18, color: theme.hintColor),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
+              child: T(
                 'Şifreni kimseyle paylaşma. Başka sitelerde kullandığın bir şifreyi burada kullanmamanı öneririz.',
                 style: TextStyle(color: theme.hintColor, fontSize: 13),
               ),
@@ -604,9 +605,9 @@ class _RegisterFlowState extends State<_RegisterFlow> {
           maxLines: 3,
           minLines: 2,
           onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             prefixIcon: Icon(Icons.edit_note_rounded),
-            hintText: 'Hakkımda — kendinden kısaca bahset',
+            hintText: tr('Hakkımda — kendinden kısaca bahset'),
           ),
         ),
         const SizedBox(height: 4),
@@ -665,20 +666,20 @@ class _RegisterFlowState extends State<_RegisterFlow> {
                 children: const [
                   Icon(Icons.circle, size: 10, color: QColors.online),
                   SizedBox(width: 6),
-                  Text('çevrimiçi', style: TextStyle(color: QColors.online, fontWeight: FontWeight.w600)),
+                  T('çevrimiçi', style: TextStyle(color: QColors.online, fontWeight: FontWeight.w600)),
                 ],
               ),
             ],
           ),
         ),
         const SizedBox(height: 24),
-        const Text('Görünüm', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        const T('Görünüm', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
         const SizedBox(height: 10),
         SegmentedButton<ThemeMode>(
           segments: const [
-            ButtonSegment(value: ThemeMode.system, label: Text('Sistem'), icon: Icon(Icons.brightness_auto)),
-            ButtonSegment(value: ThemeMode.light, label: Text('Açık'), icon: Icon(Icons.light_mode)),
-            ButtonSegment(value: ThemeMode.dark, label: Text('Koyu'), icon: Icon(Icons.dark_mode)),
+            ButtonSegment(value: ThemeMode.system, label: T('Sistem'), icon: Icon(Icons.brightness_auto)),
+            ButtonSegment(value: ThemeMode.light, label: T('Açık'), icon: Icon(Icons.light_mode)),
+            ButtonSegment(value: ThemeMode.dark, label: T('Koyu'), icon: Icon(Icons.dark_mode)),
           ],
           selected: {app.themeMode},
           onSelectionChanged: (s) => app.setThemeMode(s.first),

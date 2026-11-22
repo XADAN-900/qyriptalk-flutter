@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:qyriptalk/core/i18n.dart';
 import 'package:provider/provider.dart';
 import '../core/strings.dart';
 import '../services/app_state.dart';
@@ -25,7 +26,7 @@ class LanguageSetupScreen extends StatelessWidget {
                 Text(s.chooseLanguage,
                     style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
-                Text('Dilini seç · Choose your language',
+                T('Dilini seç · Choose your language',
                     style: TextStyle(color: Theme.of(context).hintColor)),
                 const SizedBox(height: 14),
                 Flexible(

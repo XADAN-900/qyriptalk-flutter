@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:qyriptalk/core/i18n.dart';
 import 'package:flutter/services.dart';
 
 class QColors {
@@ -144,7 +145,7 @@ Future<bool> confirmDialog(
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('Vazgeç'),
+          child: const T('Vazgeç'),
         ),
         FilledButton(
           style: destructive
@@ -186,7 +187,7 @@ Future<String?> promptText(
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx),
-          child: const Text('Vazgeç'),
+          child: const T('Vazgeç'),
         ),
         FilledButton(
           style: FilledButton.styleFrom(minimumSize: const Size(64, 40)),

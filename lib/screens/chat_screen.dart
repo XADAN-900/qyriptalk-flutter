@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:qyriptalk/core/i18n.dart';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -366,7 +367,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final text = _input.text.trim();
     if (text.isEmpty) return;
     if (!_isDm && !app.joinedRoomIds.contains(widget.chatId)) {
-      showSnack(context, 'Mesaj göndermek için önce odaya katıl.', error: true);
+      showSnack(context, tr('Mesaj göndermek için önce odaya katıl.'), error: true);
       return;
     }
     HapticFeedback.selectionClick();
@@ -388,7 +389,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
     } catch (e) {
       _input.text = text;
-      if (mounted) showSnack(context, 'Mesaj gönderilemedi.', error: true);
+      if (mounted) showSnack(context, tr('Mesaj gönderilemedi.'), error: true);
     }
   }
 
@@ -401,7 +402,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     int duration = 0,
   }) async {
     if (bytes.length > ChatRef.maxMediaBytes) {
-      showSnack(context, 'Dosya çok büyük (en fazla 7 MB).', error: true);
+      showSnack(context, tr('Dosya çok büyük (en fazla 7 MB).'), error: true);
       return;
     }
     final reply = _replyRef();
@@ -411,7 +412,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       content: Row(children: [
         SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
         SizedBox(width: 12),
-        Text('Gönderiliyor…'),
+        T('Gönderiliyor…'),
       ]),
       duration: Duration(seconds: 30),
     ));
@@ -449,18 +450,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 controller: c,
                 maxLines: 3,
                 minLines: 1,
-                decoration: const InputDecoration(hintText: 'Açıklama ekle…'),
+                decoration: InputDecoration(hintText: tr('Açıklama ekle…')),
               ),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const T('Vazgeç')),
           FilledButton.icon(
             style: FilledButton.styleFrom(minimumSize: const Size(64, 40)),
             onPressed: () => Navigator.pop(ctx, c.text.trim()),
             icon: const Icon(Icons.send_rounded, size: 18),
-            label: const Text('Gönder'),
+            label: const T('Gönder'),
           ),
         ],
       ),
@@ -482,7 +483,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (x == null || !mounted) return;
     final len = await x.length();
     if (len > ChatRef.maxMediaBytes) {
-      if (mounted) showSnack(context, 'Video çok büyük (en fazla 7 MB).', error: true);
+      if (mounted) showSnack(context, tr('Video çok büyük (en fazla 7 MB).'), error: true);
       return;
     }
     final b = await x.readAsBytes();
@@ -580,7 +581,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final rec = AudioRecorder();
     if (!await rec.hasPermission()) {
       rec.dispose();
-      if (mounted) showSnack(context, 'Mikrofon izni gerekli.', error: true);
+      if (mounted) showSnack(context, tr('Mikrofon izni gerekli.'), error: true);
       return;
     }
     final dir = await getTemporaryDirectory();
@@ -614,7 +615,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     setState(() => _recording = false);
     if (!send || path == null) return;
     if (secs < 1) {
-      if (mounted) showSnack(context, 'Kayıt çok kısa.');
+      if (mounted) showSnack(context, tr('Kayıt çok kısa.'));
       return;
     }
     final f = File(path);
@@ -643,7 +644,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final out = await Translator.translate(m.type == 'text' ? m.text : m.caption, target: target);
     if (!mounted) return;
     if (out == null) {
-      if (!silent) showSnack(context, 'Çeviri yapılamadı.', error: true);
+      if (!silent) showSnack(context, tr('Çeviri yapılamadı.'), error: true);
       return;
     }
     setState(() => _translations[m.id] = out);
@@ -700,7 +701,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               if (m.type == 'text' || m.caption.isNotEmpty)
                 _action(ctx, Icons.copy_rounded, 'Kopyala', () {
                   Clipboard.setData(ClipboardData(text: m.type == 'text' ? m.text : m.caption));
-                  showSnack(context, 'Kopyalandı');
+                  showSnack(context, tr('Kopyalandı'));
                 }),
               if (m.type == 'text' || m.caption.isNotEmpty)
                 _action(ctx, Icons.translate_rounded,
@@ -775,7 +776,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           children: [
             ListTile(
               leading: const Icon(Icons.schedule_rounded),
-              title: const Text('Gönderildi'),
+              title: const T('Gönderildi'),
               subtitle: Text('${formatDayHeader(m.timestamp)} ${formatClock(m.timestamp)}'),
             ),
             ListTile(
@@ -809,7 +810,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text('İlet…', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+              child: T('İlet…', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
             ),
             for (final t in targets)
               ListTile(
@@ -851,7 +852,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final list = _msgs.where((m) => _selected.contains(m.id)).toList();
     final allowed = list.where((m) => m.senderUid == _myUid || _canModerate).toList();
     if (allowed.isEmpty) {
-      showSnack(context, 'Sadece kendi mesajlarını silebilirsin.', error: true);
+      showSnack(context, tr('Sadece kendi mesajlarını silebilirsin.'), error: true);
       return;
     }
     final ok = await confirmDialog(context,
@@ -872,7 +873,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final k = _keys[id];
     final ctx = k?.currentContext;
     if (ctx == null) {
-      showSnack(context, 'Mesaj daha eski; yukarı kaydırarak yükle.');
+      showSnack(context, tr('Mesaj daha eski; yukarı kaydırarak yükle.'));
       return;
     }
     Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 350), alignment: 0.4);
@@ -940,9 +941,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         preview: preview,
         reason: reason,
       );
-      if (mounted) showSnack(context, 'Şikayetin yöneticiye iletildi. Teşekkürler.');
+      if (mounted) showSnack(context, tr('Şikayetin yöneticiye iletildi. Teşekkürler.'));
     } catch (_) {
-      if (mounted) showSnack(context, 'Şikayet gönderilemedi.', error: true);
+      if (mounted) showSnack(context, tr('Şikayet gönderilemedi.'), error: true);
     }
   }
 
@@ -961,7 +962,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   /// Mesajları SADECE bu kullanıcı için siler (karşı taraf / oda üyeleri etkilenmez).
   Future<void> _clearChat() async {
     if (_msgs.isEmpty) {
-      showSnack(context, 'Sohbet zaten boş.');
+      showSnack(context, tr('Sohbet zaten boş.'));
       return;
     }
     final ok = await confirmDialog(context,
@@ -977,7 +978,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _selected.clear();
       _replyTo = null;
     });
-    showSnack(context, 'Sohbet temizlendi.');
+    showSnack(context, tr('Sohbet temizlendi.'));
   }
 
   // ------------------------------------------------------------------
@@ -1071,7 +1072,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           .join('\n');
                       Clipboard.setData(ClipboardData(text: txt));
                       setState(() => _selected.clear());
-                      showSnack(context, 'Kopyalandı');
+                      showSnack(context, tr('Kopyalandı'));
                     },
                   ),
                   IconButton(
@@ -1096,8 +1097,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     title: TextField(
                       autofocus: true,
                       onChanged: (v) => setState(() => _query = v.trim()),
-                      decoration: const InputDecoration(
-                        hintText: 'Bu sohbette ara…',
+                      decoration: InputDecoration(
+                        hintText: tr('Bu sohbette ara…'),
                         filled: false,
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
@@ -1175,13 +1176,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           }
                         },
                         itemBuilder: (_) => [
-                          const PopupMenuItem(value: 'search', child: Text('Sohbette ara')),
+                          const PopupMenuItem(value: 'search', child: T('Sohbette ara')),
                           PopupMenuItem(
                               value: 'info', child: Text(_isDm ? 'Profili görüntüle' : 'Oda bilgisi')),
                           PopupMenuItem(
                               value: 'mute',
                               child: Text(app.isMuted(ref.key) ? 'Bildirimleri aç' : 'Sessize al')),
-                          const PopupMenuItem(value: 'clear', child: Text('Sohbeti temizle')),
+                          const PopupMenuItem(value: 'clear', child: T('Sohbeti temizle')),
                           if (_isDm)
                             PopupMenuItem(
                                 value: 'block',
@@ -1261,7 +1262,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                     ? Padding(
                                         padding: const EdgeInsets.all(16),
                                         child: Center(
-                                          child: Text('🔒 Sohbetin başlangıcı',
+                                          child: T('🔒 Sohbetin başlangıcı',
                                               style: TextStyle(color: theme.hintColor, fontSize: 12)),
                                         ),
                                       )
@@ -1373,7 +1374,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       child: FilledButton.icon(
                         onPressed: () => app.joinRoom(widget.chatId),
                         icon: const Icon(Icons.login_rounded),
-                        label: const Text('Odaya katıl'),
+                        label: const T('Odaya katıl'),
                       ),
                     ),
                   ),
@@ -1393,7 +1394,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         if (appW.isBlocked(_otherUid))
                           TextButton(
                             onPressed: () => app.setBlocked(_otherUid, false),
-                            child: const Text('Engeli kaldır'),
+                            child: const T('Engeli kaldır'),
                           ),
                       ]),
                     ),
@@ -1440,7 +1441,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 leading: Avatar(
                     name: app.users[e.key]?.username ?? '?', photo: app.users[e.key]?.photo, size: 38),
                 title: Text(e.key == _myUid ? 'Sen' : (app.users[e.key]?.username ?? 'Kullanıcı')),
-                subtitle: e.key == _myUid ? const Text('Kaldırmak için dokun') : null,
+                subtitle: e.key == _myUid ? const T('Kaldırmak için dokun') : null,
                 trailing: Text(e.value, style: const TextStyle(fontSize: 24)),
                 onTap: e.key == _myUid
                     ? () {
@@ -1520,7 +1521,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text('Kaydediliyor…', style: TextStyle(color: theme.hintColor)),
+                          child: T('Kaydediliyor…', style: TextStyle(color: theme.hintColor)),
                         ),
                         _SendButton(icon: Icons.send_rounded, onTap: () => _stopRecording(send: true)),
                       ],
@@ -1563,8 +1564,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                     onTap: () {
                                       if (_showEmoji) setState(() => _showEmoji = false);
                                     },
-                                    decoration: const InputDecoration(
-                                      hintText: 'Mesaj yaz…',
+                                    decoration: InputDecoration(
+                                      hintText: tr('Mesaj yaz…'),
                                       filled: false,
                                       isDense: true,
                                       contentPadding: EdgeInsets.fromLTRB(16, 12, 4, 12),
@@ -1764,7 +1765,7 @@ class _EmptyChat extends StatelessWidget {
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 6),
-            Text('İlk mesajı sen gönder!', style: TextStyle(color: Theme.of(context).hintColor)),
+            T('İlk mesajı sen gönder!', style: TextStyle(color: Theme.of(context).hintColor)),
           ],
         ),
       ),

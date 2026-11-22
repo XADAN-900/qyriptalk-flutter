@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:qyriptalk/core/i18n.dart';
 
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
@@ -12,7 +13,7 @@ Future<void> shareDataUrl(BuildContext context, String dataUrl,
     {String? fileName, String? mime}) async {
   final path = await MediaCache.file(dataUrl, fileName: fileName, mime: mime);
   if (path == null) {
-    if (context.mounted) showSnack(context, 'Dosya açılamadı.', error: true);
+    if (context.mounted) showSnack(context, tr('Dosya açılamadı.'), error: true);
     return;
   }
   await Share.shareXFiles([XFile(path, mimeType: mime ?? mimeOfDataUrl(dataUrl))]);

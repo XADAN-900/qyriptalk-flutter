@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:qyriptalk/core/i18n.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -126,7 +127,7 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
           icon: Icon(Icons.campaign_rounded, size: 40, color: widget.accent),
           title: Text('${m['title'] ?? 'Duyuru'}'),
           content: SingleChildScrollView(child: Text('${m['body'] ?? ''}')),
-          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Tamam'))],
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const T('Tamam'))],
         ),
       );
     } finally {
@@ -196,7 +197,7 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
             children: [
               const Icon(Icons.gpp_bad_rounded, size: 72, color: Colors.redAccent),
               const SizedBox(height: 16),
-              const Text('Hesabın askıya alındı',
+              const T('Hesabın askıya alındı',
                   textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
               const SizedBox(height: 10),
               Text(
@@ -205,7 +206,7 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
                 style: TextStyle(color: Theme.of(context).hintColor),
               ),
               const SizedBox(height: 24),
-              FilledButton(onPressed: widget.onLogout, child: const Text('Çıkış yap')),
+              FilledButton(onPressed: widget.onLogout, child: const T('Çıkış yap')),
             ],
           ),
         ),
@@ -307,7 +308,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       canPop: !downloading,
       child: AlertDialog(
         icon: Icon(Icons.system_update_rounded, size: 44, color: widget.accent),
-        title: const Text('Yeni sürüm var'),
+        title: const T('Yeni sürüm var'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -329,11 +330,11 @@ class _UpdateDialogState extends State<_UpdateDialog> {
         ),
         actions: [
           if (!downloading)
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Sonra')),
+            TextButton(onPressed: () => Navigator.pop(context), child: const T('Sonra')),
           if (_done)
-            FilledButton(onPressed: _install, child: const Text('Kur'))
+            FilledButton(onPressed: _install, child: const T('Kur'))
           else if (!downloading)
-            FilledButton(onPressed: _download, child: const Text('Güncelle')),
+            FilledButton(onPressed: _download, child: const T('Güncelle')),
         ],
       ),
     );

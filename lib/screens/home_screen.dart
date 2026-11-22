@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:qyriptalk/core/i18n.dart';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -67,13 +68,13 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         icon: const Icon(Icons.notifications_active_rounded, size: 40),
-        title: const Text('Aramaları kaçırma'),
-        content: const Text(
+        title: const T('Aramaları kaçırma'),
+        content: const T(
           'Uygulama kapalıyken ve ekran kilitliyken de mesaj bildirimleri ve zil sesli, tam ekran '
           'aramalar gelsin diye iki izin gerekiyor. Açılan ekranlarda Qyriptalk\'a izin ver.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Sonra')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const T('Sonra')),
           FilledButton(
             style: FilledButton.styleFrom(minimumSize: const Size(64, 40)),
             onPressed: () async {
@@ -81,7 +82,7 @@ class _HomeScreenState extends State<HomeScreen> {
               if (!battOk) await NativeBridge.requestIgnoreBattery();
               if (!fullOk) await NativeBridge.openFullScreenSettings();
             },
-            child: const Text('İzin ver'),
+            child: const T('İzin ver'),
           ),
         ],
       ),
@@ -114,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: const [
                       Icon(Icons.wifi_off_rounded, color: Colors.white, size: 16),
                       SizedBox(width: 8),
-                      Text('İnternet yok',
+                      T('İnternet yok',
                           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                     ],
                   ),
@@ -244,7 +245,7 @@ class _ChatsTabState extends State<ChatsTab> {
                 controller: _search,
                 onChanged: (v) => setState(() => _q = v.trim()),
                 decoration: InputDecoration(
-                  hintText: 'Sohbetlerde ara',
+                  hintText: tr('Sohbetlerde ara'),
                   prefixIcon: const Icon(Icons.search_rounded),
                   isDense: true,
                   suffixIcon: _q.isEmpty
@@ -321,7 +322,7 @@ class _ChatsTabState extends State<ChatsTab> {
                   width: 52,
                   child: Icon(Icons.archive_outlined),
                 ),
-                title: const Text('Arşivlenmiş', style: TextStyle(fontWeight: FontWeight.w600)),
+                title: const T('Arşivlenmiş', style: TextStyle(fontWeight: FontWeight.w600)),
                 trailing: Text('$archivedCount'),
                 onTap: () => Navigator.push(
                     context, MaterialPageRoute(builder: (_) => const ArchivedChatsScreen())),
@@ -531,7 +532,7 @@ class ChatTile extends StatelessWidget {
             if (!chat.isDm)
               ListTile(
                 leading: const Icon(Icons.logout_rounded, color: QColors.danger),
-                title: const Text('Odadan ayrıl', style: TextStyle(color: QColors.danger)),
+                title: const T('Odadan ayrıl', style: TextStyle(color: QColors.danger)),
                 onTap: () async {
                   Navigator.pop(ctx);
                   final ok = await confirmDialog(context,
@@ -556,9 +557,9 @@ class ArchivedChatsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final chats = context.watch<AppState>().chatSummaries(archived: true);
     return Scaffold(
-      appBar: AppBar(title: const Text('Arşivlenmiş')),
+      appBar: AppBar(title: const T('Arşivlenmiş')),
       body: chats.isEmpty
-          ? const Center(child: Text('Arşivde sohbet yok'))
+          ? const Center(child: T('Arşivde sohbet yok'))
           : ListView(children: [for (final c in chats) ChatTile(chat: c)]),
     );
   }

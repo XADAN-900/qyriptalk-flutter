@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:qyriptalk/core/i18n.dart';
 import '../core/strings.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -27,18 +28,18 @@ class SettingsTab extends StatelessWidget {
           children: [
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Galeriden seç'),
+              title: const T('Galeriden seç'),
               onTap: () => Navigator.pop(ctx, 'gallery'),
             ),
             ListTile(
               leading: const Icon(Icons.photo_camera_outlined),
-              title: const Text('Fotoğraf çek'),
+              title: const T('Fotoğraf çek'),
               onTap: () => Navigator.pop(ctx, 'camera'),
             ),
             if (app.me?.photo != null)
               ListTile(
                 leading: const Icon(Icons.delete_outline, color: QColors.danger),
-                title: const Text('Fotoğrafı kaldır', style: TextStyle(color: QColors.danger)),
+                title: const T('Fotoğrafı kaldır', style: TextStyle(color: QColors.danger)),
                 onTap: () => Navigator.pop(ctx, 'remove'),
               ),
           ],
@@ -59,7 +60,7 @@ class SettingsTab extends StatelessWidget {
     if (x == null) return;
     final b = await x.readAsBytes();
     await app.updateProfile(photoDataUrl: toDataUrl(b, 'image/jpeg'));
-    if (context.mounted) showSnack(context, 'Profil fotoğrafı güncellendi.');
+    if (context.mounted) showSnack(context, tr('Profil fotoğrafı güncellendi.'));
   }
 
   void _showMyQr(BuildContext context) {
@@ -82,7 +83,7 @@ class SettingsTab extends StatelessWidget {
               child: QrImageView(data: code, size: 210, backgroundColor: Colors.white),
             ),
             const SizedBox(height: 10),
-            Text('Qyriptalk\'ta "QR kod tara" ile okutulabilir',
+            T('Qyriptalk\'ta "QR kod tara" ile okutulabilir',
                 textAlign: TextAlign.center, style: TextStyle(color: Theme.of(ctx).hintColor, fontSize: 13)),
           ],
         ),
@@ -90,9 +91,9 @@ class SettingsTab extends StatelessWidget {
           TextButton.icon(
             onPressed: () => Share.share('Qyriptalk\'ta beni ekle: ${app.username}\n$code'),
             icon: const Icon(Icons.share_rounded),
-            label: const Text('Paylaş'),
+            label: const T('Paylaş'),
           ),
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Kapat')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const T('Kapat')),
         ],
       ),
     );
@@ -145,9 +146,9 @@ class SettingsTab extends StatelessWidget {
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Hesap taşıma'),
+        title: const T('Hesap taşıma'),
         content: Text(msg),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Tamam'))],
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const T('Tamam'))],
       ),
     );
   }
@@ -168,7 +169,7 @@ class SettingsTab extends StatelessWidget {
     final me = app.me;
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Profil')),
+      appBar: AppBar(title: const T('Profil')),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 40),
         children: [
@@ -234,37 +235,37 @@ class SettingsTab extends StatelessWidget {
           _Group(title: 'Hesap', children: [
             ListTile(
               leading: const Icon(Icons.qr_code_2_rounded),
-              title: const Text('QR kodum'),
-              subtitle: const Text('Arkadaşın okutsun, seni hemen bulsun'),
+              title: const T('QR kodum'),
+              subtitle: const T('Arkadaşın okutsun, seni hemen bulsun'),
               onTap: () => _showMyQr(context),
             ),
             ListTile(
               leading: const Icon(Icons.qr_code_scanner_rounded),
-              title: const Text('QR kod tara'),
-              subtitle: const Text('Oda daveti ya da profil kodu'),
+              title: const T('QR kod tara'),
+              subtitle: const T('Oda daveti ya da profil kodu'),
               onTap: () => scanQrFlow(context),
             ),
             ListTile(
               leading: const Icon(Icons.alternate_email_rounded),
-              title: const Text('Kullanıcı adı'),
+              title: const T('Kullanıcı adı'),
               subtitle: Text(app.username),
               onTap: () => _changeUsername(context),
             ),
             ListTile(
               leading: const Icon(Icons.edit_note_rounded),
-              title: const Text('Hakkımda'),
+              title: const T('Hakkımda'),
               onTap: () => _editBio(context),
             ),
             ListTile(
               leading: const Icon(Icons.key_rounded),
-              title: const Text('Şifreyi değiştir'),
+              title: const T('Şifreyi değiştir'),
               onTap: () => _changePassword(context),
             ),
             if (me?.role == 'admin' || app.username.toLowerCase() == 'xadan')
               ListTile(
                 leading: const Icon(Icons.admin_panel_settings_outlined),
-                title: const Text('Tüm hesapları güvenli girişe taşı'),
-                subtitle: const Text('Yönetici: açık şifreleri siler, herkesi Firebase güvenli girişine geçirir'),
+                title: const T('Tüm hesapları güvenli girişe taşı'),
+                subtitle: const T('Yönetici: açık şifreleri siler, herkesi Firebase güvenli girişine geçirir'),
                 onTap: () => _migrateAll(context),
               ),
           ]),
@@ -273,9 +274,9 @@ class SettingsTab extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: SegmentedButton<ThemeMode>(
                 segments: const [
-                  ButtonSegment(value: ThemeMode.system, label: Text('Sistem'), icon: Icon(Icons.brightness_auto)),
-                  ButtonSegment(value: ThemeMode.light, label: Text('Açık'), icon: Icon(Icons.light_mode)),
-                  ButtonSegment(value: ThemeMode.dark, label: Text('Koyu'), icon: Icon(Icons.dark_mode)),
+                  ButtonSegment(value: ThemeMode.system, label: T('Sistem'), icon: Icon(Icons.brightness_auto)),
+                  ButtonSegment(value: ThemeMode.light, label: T('Açık'), icon: Icon(Icons.light_mode)),
+                  ButtonSegment(value: ThemeMode.dark, label: T('Koyu'), icon: Icon(Icons.dark_mode)),
                 ],
                 selected: {app.themeMode},
                 onSelectionChanged: (s) => app.setThemeMode(s.first),
@@ -304,37 +305,37 @@ class SettingsTab extends StatelessWidget {
           _Group(title: 'Bildirimler', children: [
             SwitchListTile(
               secondary: const Icon(Icons.notifications_active_outlined),
-              title: const Text('Mesaj bildirimleri'),
+              title: const T('Mesaj bildirimleri'),
               value: app.notificationsEnabled,
               onChanged: (v) => app.setSetting('messageNotifications', v),
             ),
             SwitchListTile(
               secondary: const Icon(Icons.volume_up_outlined),
-              title: const Text('Bildirim sesi'),
+              title: const T('Bildirim sesi'),
               value: app.soundEnabled,
               onChanged: (v) => app.setSetting('soundNotifications', v),
             ),
             SwitchListTile(
               secondary: const Icon(Icons.lock_outline_rounded),
-              title: const Text('Kilit ekranında içerik'),
-              subtitle: const Text('Kapalıysa sadece "Yeni mesaj" yazar'),
+              title: const T('Kilit ekranında içerik'),
+              subtitle: const T('Kapalıysa sadece "Yeni mesaj" yazar'),
               value: app.lockscreenPreview,
               onChanged: (v) => app.setSetting('lockscreenPreview', v),
             ),
             SwitchListTile(
               secondary: const Icon(Icons.record_voice_over_outlined),
-              title: const Text('Gelen mesajları sesli oku'),
+              title: const T('Gelen mesajları sesli oku'),
               value: app.speakMessages,
               onChanged: (v) => app.setSetting('speakMessages', v),
             ),
             ListTile(
               leading: const Icon(Icons.phone_in_talk_outlined),
-              title: const Text('Tam ekran arama izni'),
-              subtitle: const Text('Ekran kapalıyken gelen arama WhatsApp gibi tam ekran çalsın'),
+              title: const T('Tam ekran arama izni'),
+              subtitle: const T('Ekran kapalıyken gelen arama WhatsApp gibi tam ekran çalsın'),
               onTap: () async {
                 final ok = await NativeBridge.canUseFullScreen();
                 if (ok) {
-                  if (context.mounted) showSnack(context, 'Tam ekran arama izni zaten açık ✅');
+                  if (context.mounted) showSnack(context, tr('Tam ekran arama izni zaten açık ✅'));
                 } else {
                   await NativeBridge.openFullScreenSettings();
                 }
@@ -342,12 +343,12 @@ class SettingsTab extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Icons.battery_saver_outlined),
-              title: const Text('Arka planda çalışma'),
-              subtitle: const Text('Pil kısıtlamasını kaldır; uygulama kapalıyken de mesaj ve arama gelsin'),
+              title: const T('Arka planda çalışma'),
+              subtitle: const T('Pil kısıtlamasını kaldır; uygulama kapalıyken de mesaj ve arama gelsin'),
               onTap: () async {
                 final ok = await NativeBridge.isIgnoringBattery();
                 if (ok) {
-                  if (context.mounted) showSnack(context, 'Pil kısıtlaması zaten kapalı ✅');
+                  if (context.mounted) showSnack(context, tr('Pil kısıtlaması zaten kapalı ✅'));
                 } else {
                   await NativeBridge.requestIgnoreBattery();
                 }
@@ -355,33 +356,33 @@ class SettingsTab extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Icons.tune_rounded),
-              title: const Text('Telefon bildirim ayarları'),
+              title: const T('Telefon bildirim ayarları'),
               onTap: () => NativeBridge.openNotificationSettings(),
             ),
           ]),
           _Group(title: 'Sohbet', children: [
             SwitchListTile(
               secondary: const Icon(Icons.keyboard_return_rounded),
-              title: const Text('Enter ile gönder'),
+              title: const T('Enter ile gönder'),
               value: app.enterToSend,
               onChanged: (v) => app.setSetting('enterToSend', v),
             ),
             SwitchListTile(
               secondary: const Icon(Icons.done_all_rounded),
-              title: const Text('Okundu bilgisi'),
-              subtitle: const Text('Kapalıysa okuduğunu karşı taraf görmez'),
+              title: const T('Okundu bilgisi'),
+              subtitle: const T('Kapalıysa okuduğunu karşı taraf görmez'),
               value: app.showReadReceipts,
               onChanged: (v) => app.setSetting('showReadReceipts', v),
             ),
             SwitchListTile(
               secondary: const Icon(Icons.translate_rounded),
-              title: const Text('Gelen mesajları otomatik çevir'),
+              title: const T('Gelen mesajları otomatik çevir'),
               value: app.autoTranslate,
               onChanged: (v) => app.setSetting('autoTranslate', v),
             ),
             SwitchListTile(
               secondary: const Icon(Icons.density_small_rounded),
-              title: const Text('Sıkı görünüm'),
+              title: const T('Sıkı görünüm'),
               value: app.compactMode,
               onChanged: (v) => app.setSetting('compactMode', v),
             ),
@@ -394,7 +395,7 @@ class SettingsTab extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Icons.logout_rounded, color: QColors.danger),
-              title: const Text('Çıkış yap', style: TextStyle(color: QColors.danger)),
+              title: const T('Çıkış yap', style: TextStyle(color: QColors.danger)),
               onTap: () async {
                 final ok = await confirmDialog(context,
                     title: 'Çıkış yap',
@@ -406,8 +407,8 @@ class SettingsTab extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Icons.delete_forever_rounded, color: QColors.danger),
-              title: const Text('Hesabımı sil', style: TextStyle(color: QColors.danger)),
-              subtitle: const Text('Profilin, kullanıcı adın ve oda üyeliklerin kalıcı olarak silinir'),
+              title: const T('Hesabımı sil', style: TextStyle(color: QColors.danger)),
+              subtitle: const T('Profilin, kullanıcı adın ve oda üyeliklerin kalıcı olarak silinir'),
               onTap: () async {
                 final ok = await confirmDialog(context,
                     title: 'Hesabını sil',

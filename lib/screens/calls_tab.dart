@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:qyriptalk/core/i18n.dart';
 import 'package:provider/provider.dart';
 
 import '../core/theme.dart';
@@ -29,7 +30,7 @@ class CallsTab extends StatelessWidget {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Aramalar'),
+        title: const T('Aramalar'),
         actions: [
           if (log.isNotEmpty)
             IconButton(
@@ -55,10 +56,10 @@ class CallsTab extends StatelessWidget {
                   children: [
                     Icon(Icons.call_rounded, size: 72, color: theme.colorScheme.primary.withValues(alpha: 0.5)),
                     const SizedBox(height: 14),
-                    const Text('Henüz arama yok',
+                    const T('Henüz arama yok',
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 6),
-                    Text(
+                    T(
                       'Bir sohbetin üstündeki telefon simgesine dokunarak sesli arama başlat.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: theme.hintColor),

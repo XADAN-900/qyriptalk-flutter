@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:qyriptalk/core/i18n.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -48,13 +49,13 @@ class _QrScanScreenState extends State<QrScanScreen> {
       final v = r?.barcodes.isNotEmpty == true ? r!.barcodes.first.rawValue : null;
       if (!mounted) return;
       if (v == null || v.trim().isEmpty) {
-        showSnack(context, 'Bu görselde QR kod bulunamadı.', error: true);
+        showSnack(context, tr('Bu görselde QR kod bulunamadı.'), error: true);
         return;
       }
       _done = true;
       Navigator.of(context).pop(v.trim());
     } catch (_) {
-      if (mounted) showSnack(context, 'Görsel okunamadı.', error: true);
+      if (mounted) showSnack(context, tr('Görsel okunamadı.'), error: true);
     }
   }
 
@@ -63,7 +64,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
     final v = d?.text?.trim();
     if (!mounted) return;
     if (v == null || v.isEmpty) {
-      showSnack(context, 'Panoda bağlantı yok.', error: true);
+      showSnack(context, tr('Panoda bağlantı yok.'), error: true);
       return;
     }
     _done = true;
@@ -142,7 +143,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
                         ),
                         onPressed: _fromGallery,
                         icon: const Icon(Icons.photo_library_outlined),
-                        label: const Text('Galeriden'),
+                        label: const T('Galeriden'),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -156,7 +157,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
                         ),
                         onPressed: _paste,
                         icon: const Icon(Icons.content_paste_rounded),
-                        label: const Text('Yapıştır'),
+                        label: const T('Yapıştır'),
                       ),
                     ),
                   ],

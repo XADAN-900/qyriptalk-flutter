@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:qyriptalk/core/i18n.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -25,7 +26,7 @@ Future<void> joinRoomFlow(BuildContext context, Room room) async {
   final banned = await app.db.ref('rooms/${room.id}/bannedUsers/$uid').get();
   if (!context.mounted) return;
   if (banned.exists) {
-    showSnack(context, 'Bu odaya erişimin kısıtlanmış.', error: true);
+    showSnack(context, tr('Bu odaya erişimin kısıtlanmış.'), error: true);
     return;
   }
   if (room.hasPassword && room.createdBy != uid) {
@@ -33,7 +34,7 @@ Future<void> joinRoomFlow(BuildContext context, Room room) async {
         title: '"${room.name}" şifreli', hint: 'Oda şifresi', obscure: true, confirmText: 'Katıl');
     if (pw == null || !context.mounted) return;
     if (!room.checkPassword(pw)) {
-      showSnack(context, 'Yanlış şifre.', error: true);
+      showSnack(context, tr('Yanlış şifre.'), error: true);
       return;
     }
   }
@@ -54,11 +55,11 @@ Future<void> handleScannedCode(BuildContext context, String code) async {
   if (ui >= 0) {
     final uid = c.substring(ui + kUserQrPrefix.length).split(RegExp(r'[/?#\s]')).first;
     if (uid == app.uid) {
-      showSnack(context, 'Bu senin kendi QR kodun 🙂');
+      showSnack(context, tr('Bu senin kendi QR kodun 🙂'));
       return;
     }
     if (uid.isEmpty || !app.users.containsKey(uid)) {
-      showSnack(context, 'Bu QR koduna ait kullanıcı bulunamadı.', error: true);
+      showSnack(context, tr('Bu QR koduna ait kullanıcı bulunamadı.'), error: true);
       return;
     }
     Navigator.push(context, MaterialPageRoute(builder: (_) => UserProfileScreen(uid: uid)));
@@ -66,13 +67,13 @@ Future<void> handleScannedCode(BuildContext context, String code) async {
   }
   final parsed = AppState.parseInvite(c);
   if (parsed == null) {
-    showSnack(context, 'Bu bir Qyriptalk davet kodu değil.', error: true);
+    showSnack(context, tr('Bu bir Qyriptalk davet kodu değil.'), error: true);
     return;
   }
   final room = await app.refreshRoom(parsed.id);
   if (!context.mounted) return;
   if (room == null) {
-    showSnack(context, 'Oda bulunamadı ya da silinmiş.', error: true);
+    showSnack(context, tr('Oda bulunamadı ya da silinmiş.'), error: true);
     return;
   }
   await joinRoomFlow(context, room);
@@ -96,18 +97,18 @@ Future<void> joinByInviteDialog(BuildContext context) async {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         const Padding(
           padding: EdgeInsets.only(bottom: 8),
-          child: Text('Odaya davetle katıl', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+          child: T('Odaya davetle katıl', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
         ),
         ListTile(
           leading: const Icon(Icons.qr_code_scanner_rounded),
-          title: const Text('QR kod tara'),
-          subtitle: const Text('Kamerayla ya da galerideki bir görselden'),
+          title: const T('QR kod tara'),
+          subtitle: const T('Kamerayla ya da galerideki bir görselden'),
           onTap: () => Navigator.pop(ctx, 'qr'),
         ),
         ListTile(
           leading: const Icon(Icons.link_rounded),
-          title: const Text('Davet bağlantısı gir'),
-          subtitle: const Text('Qyriptalk/OdaAdı/OdaID'),
+          title: const T('Davet bağlantısı gir'),
+          subtitle: const T('Qyriptalk/OdaAdı/OdaID'),
           onTap: () => Navigator.pop(ctx, 'link'),
         ),
       ]),
@@ -178,7 +179,7 @@ class _RoomsTabState extends State<RoomsTab> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Odalar'),
+        title: const T('Odalar'),
         actions: [
           IconButton(
             tooltip: 'QR kod tara',
@@ -201,7 +202,7 @@ class _RoomsTabState extends State<RoomsTab> {
         heroTag: 'newRoom',
         onPressed: () => showCreateRoomSheet(context),
         icon: const Icon(Icons.add_rounded),
-        label: const Text('Oda oluştur'),
+        label: const T('Oda oluştur'),
       ),
       body: RefreshIndicator(
         onRefresh: _load,
@@ -212,8 +213,8 @@ class _RoomsTabState extends State<RoomsTab> {
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
               child: TextField(
                 onChanged: (v) => setState(() => _q = v.trim()),
-                decoration: const InputDecoration(
-                  hintText: 'Oda ara',
+                decoration: InputDecoration(
+                  hintText: tr('Oda ara'),
                   prefixIcon: Icon(Icons.search_rounded),
                   isDense: true,
                 ),
@@ -265,10 +266,10 @@ class _RoomsTabState extends State<RoomsTab> {
                     Icon(Icons.travel_explore_rounded,
                         size: 64, color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5)),
                     const SizedBox(height: 12),
-                    const Text('Katılabileceğin yeni oda yok',
+                    const T('Katılabileceğin yeni oda yok',
                         style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                     const SizedBox(height: 4),
-                    Text('İlk odayı sen oluştur!', style: TextStyle(color: Theme.of(context).hintColor)),
+                    T('İlk odayı sen oluştur!', style: TextStyle(color: Theme.of(context).hintColor)),
                   ],
                 ),
               )
@@ -339,7 +340,7 @@ class _RoomCard extends StatelessWidget {
         trailing: FilledButton.tonal(
           style: FilledButton.styleFrom(minimumSize: const Size(64, 36)),
           onPressed: () => joinRoomFlow(context, room),
-          child: const Text('Katıl'),
+          child: const T('Katıl'),
         ),
       ),
     );
@@ -400,7 +401,7 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Yeni oda', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+            const T('Yeni oda', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
             const SizedBox(height: 16),
             Center(
               child: GestureDetector(
@@ -431,26 +432,26 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
               controller: _name,
               maxLength: 40,
               onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(hintText: 'Oda adı', prefixIcon: Icon(Icons.tag_rounded)),
+              decoration: InputDecoration(hintText: tr('Oda adı'), prefixIcon: Icon(Icons.tag_rounded)),
             ),
             TextField(
               controller: _desc,
               maxLength: 120,
-              decoration: const InputDecoration(
-                  hintText: 'Açıklama (isteğe bağlı)', prefixIcon: Icon(Icons.notes_rounded)),
+              decoration: InputDecoration(
+                  hintText: tr('Açıklama (isteğe bağlı)'), prefixIcon: Icon(Icons.notes_rounded)),
             ),
             TextField(
               controller: _pass,
-              decoration: const InputDecoration(
-                  hintText: 'Şifre (isteğe bağlı)', prefixIcon: Icon(Icons.lock_outline_rounded)),
+              decoration: InputDecoration(
+                  hintText: tr('Şifre (isteğe bağlı)'), prefixIcon: Icon(Icons.lock_outline_rounded)),
             ),
             const SizedBox(height: 8),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: _private,
               onChanged: (v) => setState(() => _private = v),
-              title: const Text('Gizli oda'),
-              subtitle: const Text('Keşfet listesinde görünmez, sadece davet bağlantısıyla katılınır.'),
+              title: const T('Gizli oda'),
+              subtitle: const T('Keşfet listesinde görünmez, sadece davet bağlantısıyla katılınır.'),
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
@@ -459,7 +460,7 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
                   ? const SizedBox(
                       width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.check_rounded),
-              label: const Text('Oluştur'),
+              label: const T('Oluştur'),
             ),
           ],
         ),

@@ -1,4 +1,5 @@
 import 'package:flutter/gestures.dart';
+import 'package:qyriptalk/core/i18n.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -77,7 +78,7 @@ class MessageBubble extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.shortcut_rounded, size: 14, color: textColor.withValues(alpha: 0.7)),
           const SizedBox(width: 3),
-          Text('İletildi',
+          T('İletildi',
               style: TextStyle(
                   fontSize: 12, fontStyle: FontStyle.italic, color: textColor.withValues(alpha: 0.7))),
         ]),
@@ -460,7 +461,7 @@ class MessageBubble extends StatelessWidget {
           if (m.edited)
             Padding(
               padding: const EdgeInsets.only(right: 4),
-              child: Text('düzenlendi', style: TextStyle(fontSize: 11, color: c, fontStyle: FontStyle.italic)),
+              child: T('düzenlendi', style: TextStyle(fontSize: 11, color: c, fontStyle: FontStyle.italic)),
             ),
           Text(formatClock(m.timestamp), style: TextStyle(fontSize: 11, color: c)),
           if (mine) ...[

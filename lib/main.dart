@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/firebase_config.dart';
 import 'core/nav.dart';
 import 'core/theme.dart';
+import 'core/i18n.dart';
 import 'screens/auth_screen.dart';
 import 'screens/language_setup_screen.dart';
 import 'screens/call_screen.dart';
@@ -55,6 +56,7 @@ Future<void> main() async {
   NetStatus.instance.start();
   final prefs = await SharedPreferences.getInstance();
   final app = AppState(prefs);
+  await I18n.I.init(prefs, app.languageCode);
   final calls = CallService(app);
   runApp(QyriptalkApp(app: app, calls: calls));
   await app.restoreSession();
@@ -136,7 +138,11 @@ class _QyriptalkAppState extends State<QyriptalkApp> {
         ChangeNotifierProvider<CallService>.value(value: widget.calls),
       ],
       child: Consumer<AppState>(
-        builder: (context, app, _) => MaterialApp(
+        builder: (context, app, _) {
+          I18n.I.lang = app.languageCode;
+          return AnimatedBuilder(
+            animation: I18n.I,
+            builder: (context, _) => MaterialApp(
           title: 'Qyriptalk',
           debugShowCheckedModeBanner: false,
           navigatorKey: navigatorKey,
@@ -154,7 +160,9 @@ class _QyriptalkAppState extends State<QyriptalkApp> {
             GlobalCupertinoLocalizations.delegate,
           ],
           home: const _Gate(),
-        ),
+            ),
+          );
+        },
       ),
     );
   }

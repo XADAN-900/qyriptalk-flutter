@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:qyriptalk/core/i18n.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -56,17 +57,17 @@ class _RoomInfoScreenState extends State<RoomInfoScreen> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(
             leading: const Icon(Icons.image_outlined),
-            title: const Text('Oda logosunu değiştir'),
+            title: const T('Oda logosunu değiştir'),
             onTap: () => Navigator.pop(ctx, 'logo'),
           ),
           ListTile(
             leading: const Icon(Icons.drive_file_rename_outline),
-            title: const Text('Oda adını değiştir'),
+            title: const T('Oda adını değiştir'),
             onTap: () => Navigator.pop(ctx, 'name'),
           ),
           ListTile(
             leading: const Icon(Icons.notes_rounded),
-            title: const Text('Açıklamayı düzenle'),
+            title: const T('Açıklamayı düzenle'),
             onTap: () => Navigator.pop(ctx, 'desc'),
           ),
           ListTile(
@@ -76,7 +77,7 @@ class _RoomInfoScreenState extends State<RoomInfoScreen> {
           ),
           SwitchListTile(
             secondary: const Icon(Icons.visibility_off_outlined),
-            title: const Text('Gizli oda'),
+            title: const T('Gizli oda'),
             value: room.isPrivate,
             onChanged: (v) => Navigator.pop(ctx, v ? 'private_on' : 'private_off'),
           ),
@@ -135,17 +136,17 @@ class _RoomInfoScreenState extends State<RoomInfoScreen> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(
             leading: const Icon(Icons.person_outline),
-            title: const Text('Profili görüntüle'),
+            title: const T('Profili görüntüle'),
             onTap: () => Navigator.pop(ctx, 'profile'),
           ),
           ListTile(
             leading: const Icon(Icons.person_remove_outlined, color: QColors.danger),
-            title: const Text('Odadan çıkar', style: TextStyle(color: QColors.danger)),
+            title: const T('Odadan çıkar', style: TextStyle(color: QColors.danger)),
             onTap: () => Navigator.pop(ctx, 'kick'),
           ),
           ListTile(
             leading: const Icon(Icons.block_rounded, color: QColors.danger),
-            title: const Text('Yasakla', style: TextStyle(color: QColors.danger)),
+            title: const T('Yasakla', style: TextStyle(color: QColors.danger)),
             onTap: () => Navigator.pop(ctx, 'ban'),
           ),
         ]),
@@ -187,7 +188,7 @@ class _RoomInfoScreenState extends State<RoomInfoScreen> {
             ],
           ),
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Kapat'))],
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const T('Kapat'))],
       ),
     );
   }
@@ -275,7 +276,7 @@ class _RoomInfoScreenState extends State<RoomInfoScreen> {
           const SizedBox(height: 12),
           ListTile(
             leading: const Icon(Icons.link_rounded),
-            title: const Text('Davet bağlantısı'),
+            title: const T('Davet bağlantısı'),
             subtitle: Text(room.inviteLink, maxLines: 1, overflow: TextOverflow.ellipsis),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
@@ -284,7 +285,7 @@ class _RoomInfoScreenState extends State<RoomInfoScreen> {
                   icon: const Icon(Icons.copy_rounded),
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: room.inviteLink));
-                    showSnack(context, 'Davet bağlantısı kopyalandı.');
+                    showSnack(context, tr('Davet bağlantısı kopyalandı.'));
                   },
                 ),
                 IconButton(
@@ -316,7 +317,7 @@ class _RoomInfoScreenState extends State<RoomInfoScreen> {
                     ? Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(gradient: QColors.brand, borderRadius: BorderRadius.circular(10)),
-                        child: const Text('Kurucu',
+                        child: const T('Kurucu',
                             style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
                       )
                     : null,
@@ -332,7 +333,7 @@ class _RoomInfoScreenState extends State<RoomInfoScreen> {
             const Divider(),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-              child: Text('YASAKLILAR',
+              child: T('YASAKLILAR',
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: theme.colorScheme.error)),
             ),
             for (final e in _banned.entries)
@@ -341,7 +342,7 @@ class _RoomInfoScreenState extends State<RoomInfoScreen> {
                 title: Text(app.users[e.key]?.username ?? asStr(e.value, 'Kullanıcı')),
                 trailing: TextButton(
                   onPressed: () => app.db.ref('rooms/${room.id}/bannedUsers/${e.key}').remove(),
-                  child: const Text('Yasağı kaldır'),
+                  child: const T('Yasağı kaldır'),
                 ),
               ),
           ],
@@ -349,7 +350,7 @@ class _RoomInfoScreenState extends State<RoomInfoScreen> {
           if (app.joinedRoomIds.contains(room.id) && !isOwner)
             ListTile(
               leading: const Icon(Icons.logout_rounded, color: QColors.danger),
-              title: const Text('Odadan ayrıl', style: TextStyle(color: QColors.danger)),
+              title: const T('Odadan ayrıl', style: TextStyle(color: QColors.danger)),
               onTap: () async {
                 final ok = await confirmDialog(context,
                     title: 'Odadan ayrıl', message: '"${room.name}" odasından ayrılınsın mı?', confirmText: 'Ayrıl', destructive: true);
@@ -361,8 +362,8 @@ class _RoomInfoScreenState extends State<RoomInfoScreen> {
           if (isOwner)
             ListTile(
               leading: const Icon(Icons.delete_forever_rounded, color: QColors.danger),
-              title: const Text('Odayı sil', style: TextStyle(color: QColors.danger)),
-              subtitle: const Text('Tüm mesajlar kalıcı olarak silinir'),
+              title: const T('Odayı sil', style: TextStyle(color: QColors.danger)),
+              subtitle: const T('Tüm mesajlar kalıcı olarak silinir'),
               onTap: () async {
                 final ok = await confirmDialog(context,
                     title: 'Odayı sil',

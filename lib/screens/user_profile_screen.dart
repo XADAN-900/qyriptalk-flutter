@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:qyriptalk/core/i18n.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
@@ -22,7 +23,7 @@ class UserProfileScreen extends StatelessWidget {
     final u = app.users[uid];
     final theme = Theme.of(context);
     if (u == null) {
-      return Scaffold(appBar: AppBar(), body: const Center(child: Text('Kullanıcı bulunamadı')));
+      return Scaffold(appBar: AppBar(), body: const Center(child: T('Kullanıcı bulunamadı')));
     }
     final me = app.uid;
     final dmId = me == null ? null : dmIdFor(me, uid);
@@ -104,31 +105,31 @@ class UserProfileScreen extends StatelessWidget {
           if (u.bio.isNotEmpty)
             ListTile(
               leading: const Icon(Icons.info_outline_rounded),
-              title: const Text('Hakkında'),
+              title: const T('Hakkında'),
               subtitle: Text(u.bio),
             ),
           if (u.createdAt > 0)
             ListTile(
               leading: const Icon(Icons.calendar_month_outlined),
-              title: const Text('Katılma tarihi'),
+              title: const T('Katılma tarihi'),
               subtitle: Text(DateFormat('d MMMM y', 'tr_TR')
                   .format(DateTime.fromMillisecondsSinceEpoch(u.createdAt))),
             ),
           if (u.role != 'user')
             ListTile(
               leading: const Icon(Icons.verified_user_outlined),
-              title: const Text('Rol'),
+              title: const T('Rol'),
               subtitle: Text(u.role == 'admin' ? 'Yönetici' : 'Moderatör'),
             ),
           if (uid != me)
             ListTile(
               leading: const Icon(Icons.flag_outlined, color: QColors.danger),
-              title: const Text('Şikayet et', style: TextStyle(color: QColors.danger)),
+              title: const T('Şikayet et', style: TextStyle(color: QColors.danger)),
               onTap: () async {
                 final reason = await pickReportReason(context, title: '${u.username} şikayet et');
                 if (reason == null) return;
                 await app.report(type: 'user', targetUid: uid, preview: u.bio, reason: reason).catchError((_) {});
-                if (context.mounted) showSnack(context, 'Şikayetin yöneticiye iletildi. Teşekkürler.');
+                if (context.mounted) showSnack(context, tr('Şikayetin yöneticiye iletildi. Teşekkürler.'));
               },
             ),
           if (uid != me)
