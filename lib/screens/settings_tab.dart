@@ -285,7 +285,9 @@ class SettingsTab extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.translate_rounded),
               title: Text(S.of(context).language),
-              subtitle: Text(S.langName(app.languageCode)),
+              subtitle: Text(app.hasChosenLanguage
+                  ? S.langName(app.languageCode)
+                  : '${S.of(context).get('automatic')} · ${S.langName(app.languageCode)}'),
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: () => showModalBottomSheet(
                 context: context,
@@ -293,6 +295,11 @@ class SettingsTab extends StatelessWidget {
                 builder: (_) => SafeArea(
                   child: LanguagePicker(
                     selected: app.languageCode,
+                    isAuto: !app.hasChosenLanguage,
+                    onAuto: () {
+                      app.clearLanguage();
+                      Navigator.pop(context);
+                    },
                     onSelected: (code) {
                       app.setLanguage(code);
                       Navigator.pop(context);

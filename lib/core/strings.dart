@@ -45,6 +45,7 @@ class S {
     'settings': {'tr': 'Ayarlar', 'en': 'Settings', 'fr': 'Paramètres', 'es': 'Ajustes', 'pt': 'Definições', 'ru': 'Настройки', 'ar': 'الإعدادات'},
     'language': {'tr': 'Dil', 'en': 'Language', 'fr': 'Langue', 'es': 'Idioma', 'pt': 'Idioma', 'ru': 'Язык', 'ar': 'اللغة'},
     'chooseLanguage': {'tr': 'Dilini seç', 'en': 'Choose your language', 'fr': 'Choisissez votre langue', 'es': 'Elige tu idioma', 'pt': 'Escolhe o teu idioma', 'ru': 'Выберите язык', 'ar': 'اختر لغتك'},
+    'automatic': {'tr': 'Otomatik (cihaz dili)', 'en': 'Automatic (device language)', 'fr': 'Automatique (langue de l’appareil)', 'es': 'Automático (idioma del dispositivo)', 'pt': 'Automático (idioma do dispositivo)', 'ru': 'Авто (язык устройства)', 'ar': 'تلقائي (لغة الجهاز)'},
     'translate': {'tr': 'Çevir', 'en': 'Translate', 'fr': 'Traduire', 'es': 'Traducir', 'pt': 'Traduzir', 'ru': 'Перевести', 'ar': 'ترجمة'},
     'showOriginal': {'tr': 'Orijinali göster', 'en': 'Show original', 'fr': "Afficher l'original", 'es': 'Ver original', 'pt': 'Ver original', 'ru': 'Показать оригинал', 'ar': 'إظهار الأصل'},
     'translating': {'tr': 'Çevriliyor…', 'en': 'Translating…', 'fr': 'Traduction…', 'es': 'Traduciendo…', 'pt': 'A traduzir…', 'ru': 'Перевод…', 'ar': 'جارٍ الترجمة…'},
@@ -59,20 +60,42 @@ class S {
 /// Dil seçimi için ortak liste widget'ı (kayıt ve ayarlarda kullanılır).
 class LanguagePicker extends StatelessWidget {
   final String selected;
+  final bool isAuto;
   final ValueChanged<String> onSelected;
-  const LanguagePicker({super.key, required this.selected, required this.onSelected});
+  final VoidCallback? onAuto;
+  const LanguagePicker({
+    super.key,
+    required this.selected,
+    required this.onSelected,
+    this.isAuto = false,
+    this.onAuto,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final s = S(context.watch<AppState>().languageCode);
+    const accent = Color(0xFF6C4CF1);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (onAuto != null) ...[
+          ListTile(
+            onTap: onAuto,
+            leading: const Icon(Icons.phone_iphone_rounded),
+            title: Text(s.get('automatic')),
+            subtitle: Text(S.langName(selected)),
+            trailing: isAuto
+                ? const Icon(Icons.check_rounded, color: accent)
+                : null,
+          ),
+          const Divider(height: 1),
+        ],
         for (final code in AppState.kLanguages)
           ListTile(
             onTap: () => onSelected(code),
             title: Text(S.langName(code)),
-            trailing: selected == code
-                ? const Icon(Icons.check_rounded, color: Color(0xFF6C4CF1))
+            trailing: (!isAuto && selected == code)
+                ? const Icon(Icons.check_rounded, color: accent)
                 : null,
           ),
       ],
