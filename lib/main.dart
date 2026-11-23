@@ -205,19 +205,17 @@ class _Gate extends StatelessWidget {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 350),
       child: app.isLoggedIn
-          ? (!app.hasChosenLanguage
-              ? const LanguageSetupScreen(key: ValueKey('langsetup'))
-              : AppGuard(
-                  key: ValueKey('guard_${app.uid}'),
-                  db: app.db,
-                  uid: app.uid!,
-                  repo: 'XADAN-900/qyriptalk-flutter',
-                  apkName: 'Qyriptalk.apk',
-                  appName: 'Qyriptalk',
-                  accent: const Color(0xFF7B61FF),
-                  onLogout: app.logout,
-                  child: HomeScreen(key: ValueKey(app.uid)),
-                ))
+          ? AppGuard(
+              key: ValueKey('guard_${app.uid}'),
+              db: app.db,
+              uid: app.uid!,
+              repo: 'XADAN-900/qyriptalk-flutter',
+              apkName: 'Qyriptalk.apk',
+              appName: 'Qyriptalk',
+              accent: const Color(0xFF7B61FF),
+              onLogout: app.logout,
+              child: HomeScreen(key: ValueKey(app.uid)),
+            )
           : const AuthScreen(key: ValueKey('auth')),
     );
   }
