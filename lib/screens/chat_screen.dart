@@ -640,7 +640,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _translate(ChatMessage m, {bool silent = false}) async {
-    final target = context.read<AppState>().languageCode;
+    final target = context.read<AppState>().contentLang;
     final out = await Translator.translate(m.type == 'text' ? m.text : m.caption, target: target);
     if (!mounted) return;
     if (out == null) {
